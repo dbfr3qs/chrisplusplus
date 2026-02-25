@@ -1,0 +1,21 @@
+// Arrays example: literals, indexing, length, for-in, and mutation
+
+func main() {
+    var numbers = [10, 20, 30, 40, 50];
+    
+    print(numbers[0]);
+    print(numbers[2]);
+    print(numbers[4]);
+    print(numbers.length);
+
+    // Sum using for-in
+    var sum = 0;
+    for n in numbers {
+        sum = sum + n;
+    }
+    print(sum);
+
+    // Mutate array element
+    numbers[1] = 99;
+    print(numbers[1]);
+}

@@ -1,0 +1,35 @@
+// String methods example
+
+func main() {
+    var s: String = "Hello, World!";
+
+    // Length
+    print(s.length);
+
+    // Contains, startsWith, endsWith
+    print(s.contains("World"));
+    print(s.startsWith("Hello"));
+    print(s.endsWith("World!"));
+
+    // indexOf
+    print(s.indexOf("World"));
+
+    // substring
+    var sub = s.substring(0, 5);
+    print(sub);
+
+    // replace
+    var replaced = s.replace("World", "Chris");
+    print(replaced);
+
+    // trim
+    var padded: String = "  hello  ";
+    print(padded.trim());
+
+    // toUpper / toLower
+    print(sub.toUpper());
+    print(sub.toLower());
+
+    // charAt
+    print(s.charAt(0));
+}

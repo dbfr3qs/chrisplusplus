@@ -1,0 +1,32 @@
+interface Printable {
+    func toString() -> String;
+}
+
+class Animal : Printable {
+    protected var name: String;
+
+    public func new(name: String) -> Animal {
+        return Animal { name: name };
+    }
+
+    public func toString() -> String {
+        return this.name;
+    }
+}
+
+class Dog : Animal {
+    public func new(name: String) -> Dog {
+        return Dog { name: name };
+    }
+
+    public func toString() -> String {
+        return this.name;
+    }
+}
+
+func main() {
+    var a = Animal.new("Cat");
+    var d = Dog.new("Rex");
+    print(a.toString());
+    print(d.toString());
+}

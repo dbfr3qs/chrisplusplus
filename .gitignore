@@ -1,0 +1,37 @@
+# Build directory
+build/
+
+# Compiled binaries (examples)
+examples/adt
+examples/arraymethods
+examples/arrays
+examples/classes
+examples/comprehensive
+examples/conversions
+examples/enums
+examples/errors
+examples/extern
+examples/fibonacci
+examples/generics
+examples/hello
+examples/higherorder
+examples/imports
+examples/inheritance
+examples/interfaces
+examples/lambdas
+examples/let
+examples/nullsafety
+examples/operators
+examples/point
+examples/sorting
+examples/strings
+examples/types
+
+# Object files
+*.o
+
+# Static libraries
+*.a
+
+# macOS
+.DS_Store

@@ -1,0 +1,22 @@
+func risky(x: Int) {
+    if x == 0 {
+        throw "Cannot divide by zero";
+    }
+    print("Success!");
+}
+
+func main() {
+    try {
+        risky(0);
+    } catch (e: Error) {
+        print(e);
+    }
+
+    try {
+        risky(5);
+    } catch (e: Error) {
+        print(e);
+    }
+
+    print("Done");
+}

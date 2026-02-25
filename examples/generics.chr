@@ -1,0 +1,21 @@
+// Generics example: Box<T> — a simple generic container
+
+class Box<T> {
+    private var value: T;
+
+    public func new(value: T) -> Box {
+        return Box { value: value };
+    }
+
+    public func get() -> T {
+        return this.value;
+    }
+}
+
+func main() {
+    var intBox: Box<Int> = Box.new(42);
+    var strBox: Box<String> = Box.new("hello generics");
+
+    print(intBox.get());
+    print(strBox.get());
+}

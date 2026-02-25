@@ -1,0 +1,46 @@
+// Classes with methods and fields
+
+class Point {
+    public var x: Int;
+    public var y: Int;
+    
+    public func new(x: Int, y: Int) -> Point {
+        this.x = x;
+        this.y = y;
+    }
+    
+    public func toString() -> String {
+        return "(${this.x}, ${this.y})";
+    }
+}
+
+class Counter {
+    public var count: Int;
+    
+    public func new() -> Counter {
+        this.count = 0;
+    }
+    
+    public func increment() {
+        this.count = this.count + 1;
+    }
+    
+    public func getCount() -> Int {
+        return this.count;
+    }
+}
+
+func main() {
+    // Point class
+    var p = Point.new(3, 4);
+    print(p.toString());
+    print(p.x);
+    print(p.y);
+
+    // Counter class
+    var c = Counter.new();
+    c.increment();
+    c.increment();
+    c.increment();
+    print(c.getCount());
+}

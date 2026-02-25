@@ -1,0 +1,13 @@
+// Math utility library
+
+func square(x: Int) -> Int {
+    return x * x;
+}
+
+func cube(x: Int) -> Int {
+    return x * x * x;
+}
+
+func add(a: Int, b: Int) -> Int {
+    return a + b;
+}

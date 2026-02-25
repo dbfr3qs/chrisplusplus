@@ -1,0 +1,45 @@
+// Comprehensive example: multiple features together
+
+func fizzbuzz(n: Int) -> String {
+    if n % 15 == 0 {
+        return "FizzBuzz";
+    }
+    if n % 3 == 0 {
+        return "Fizz";
+    }
+    if n % 5 == 0 {
+        return "Buzz";
+    }
+    return n.toString();
+}
+
+func main() {
+    // FizzBuzz
+    for i in 1..16 {
+        print(fizzbuzz(i));
+    }
+    
+    // Array operations with lambdas
+    var nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    var evens = nums.filter((x) => x % 2 == 0);
+    var doubled = evens.map((x) => x * 2);
+    doubled.forEach((x) => print(x));
+    
+    // Compound assignment
+    var total = 0;
+    for i in 1..11 {
+        total += i;
+    }
+    print(total);
+    
+    // If-as-expression
+    var label = if total > 50 { "big" } else { "small" };
+    print(label);
+    
+    // String methods
+    var csv = "apple,banana,cherry";
+    var fruits = csv.split(",");
+    for i in 0..3 {
+        print(fruits[i]);
+    }
+}

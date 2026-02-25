@@ -1,0 +1,28 @@
+// Type conversion methods example
+
+func main() {
+    // Int conversions
+    var x: Int = 42;
+    var s = x.toString();
+    var f = x.toFloat();
+    print(s);
+    print(f);
+
+    // Float conversions
+    var pi: Float = 3.14;
+    var rounded = pi.toInt();
+    var piStr = pi.toString();
+    print(rounded);
+    print(piStr);
+
+    // String conversions
+    var numStr: String = "123";
+    var parsed = numStr.toInt();
+    var parsedFloat = numStr.toFloat();
+    print(parsed);
+    print(parsedFloat);
+
+    // String length
+    var greeting: String = "hello";
+    print(greeting.length);
+}

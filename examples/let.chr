@@ -1,0 +1,16 @@
+// let immutability example
+
+func main() {
+    let name = "Chris";
+    let pi = 3.14;
+    let count: Int = 42;
+
+    print(name);
+    print(pi);
+    print(count);
+
+    // var is mutable
+    var x = 10;
+    x = 20;
+    print(x);
+}

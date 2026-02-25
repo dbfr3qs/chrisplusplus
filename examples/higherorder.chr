@@ -1,0 +1,45 @@
+// Higher-order functions and advanced lambdas
+
+func apply(x: Int, f: (Int) -> Int) -> Int {
+    return f(x);
+}
+
+func twice(x: Int, f: (Int) -> Int) -> Int {
+    return f(f(x));
+}
+
+func main() {
+    // Passing lambdas to higher-order functions
+    var squared = apply(5, (x) => x * x);
+    print(squared);
+
+    var result = twice(3, (x) => x * 2);
+    print(result);
+
+    // If-as-expression
+    var x = 15;
+    var label = if x > 10 { "high" } else { "low" };
+    print(label);
+
+    // Compound assignment
+    var sum = 0;
+    for i in 1..6 {
+        sum += i;
+    }
+    print(sum);
+
+    // Block lambda with map
+    var nums = [1, 2, 3, 4, 5];
+    var processed = nums.map((x) => {
+        var doubled = x * 2;
+        return doubled + 1;
+    });
+    for i in 0..5 {
+        print(processed[i]);
+    }
+
+    // Filter with lambda inference
+    var evens = nums.filter((x) => x % 2 == 0);
+    print(evens[0]);
+    print(evens[1]);
+}

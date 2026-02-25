@@ -1,0 +1,26 @@
+// Sorting algorithms example
+
+func bubbleSort(arr: [Int]) {
+    var n = arr.length;
+    for i in 0..n {
+        for j in 0..(n - 1) {
+            if arr[j] > arr[j + 1] {
+                var temp = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = temp;
+            }
+        }
+    }
+}
+
+func main() {
+    var nums = [5, 3, 8, 1, 9, 2, 7, 4, 6];
+    
+    print("Before sorting:");
+    nums.forEach((x) => print(x));
+    
+    bubbleSort(nums);
+    
+    print("After sorting:");
+    nums.forEach((x) => print(x));
+}

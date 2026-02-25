@@ -1,0 +1,27 @@
+// Operator overloading example: Vector2 with + and ==
+
+class Vector2 {
+    public var x: Int;
+    public var y: Int;
+
+    public func new(x: Int, y: Int) -> Vector2 {
+        return Vector2 { x: x, y: y };
+    }
+
+    operator +(other: Vector2) -> Vector2 {
+        return Vector2.new(this.x + other.x, this.y + other.y);
+    }
+
+    operator ==(other: Vector2) -> Bool {
+        return this.x == other.x && this.y == other.y;
+    }
+}
+
+func main() {
+    var a: Vector2 = Vector2.new(1, 2);
+    var b: Vector2 = Vector2.new(3, 4);
+    var c: Vector2 = a + b;
+
+    print(c.x);
+    print(c.y);
+}

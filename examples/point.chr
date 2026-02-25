@@ -1,0 +1,27 @@
+class Point {
+    private var x: Int;
+    private var y: Int;
+
+    public func new(x: Int, y: Int) -> Point {
+        return Point { x: x, y: y };
+    }
+
+    public func getX() -> Int {
+        return this.x;
+    }
+
+    public func getY() -> Int {
+        return this.y;
+    }
+
+    public func sum() -> Int {
+        return this.x + this.y;
+    }
+}
+
+func main() {
+    var p = Point.new(3, 4);
+    print("${p.getX()}");
+    print("${p.getY()}");
+    print("${p.sum()}");
+}

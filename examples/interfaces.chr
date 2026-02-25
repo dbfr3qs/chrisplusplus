@@ -1,0 +1,32 @@
+// Interfaces example
+
+interface Printable {
+    func display() -> String;
+}
+
+interface Serializable {
+    func serialize() -> String;
+}
+
+class User : Printable, Serializable {
+    public var name: String;
+    public var age: Int;
+
+    public func new(name: String, age: Int) -> User {
+        return User { name: name, age: age };
+    }
+
+    public func display() -> String {
+        return this.name;
+    }
+
+    public func serialize() -> String {
+        return this.name;
+    }
+}
+
+func main() {
+    var u = User.new("Chris", 30);
+    print(u.display());
+    print(u.serialize());
+}

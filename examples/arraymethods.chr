@@ -1,0 +1,37 @@
+// Array methods example
+
+func main() {
+    var nums = [10, 20, 30];
+
+    // push
+    nums.push(40);
+    print(nums.length);
+    print(nums[3]);
+
+    // pop
+    var last = nums.pop();
+    print(last);
+    print(nums.length);
+
+    // reverse
+    nums.reverse();
+    print(nums[0]);
+    print(nums[1]);
+    print(nums[2]);
+
+    // map — lambda type inference
+    var doubled = nums.map((x) => x * 2);
+    print(doubled[0]);
+    print(doubled[1]);
+    print(doubled[2]);
+
+    // filter — lambda type inference
+    var data = [1, 2, 3, 4, 5, 6, 7, 8];
+    var evens = data.filter((x) => x % 2 == 0);
+    print(evens[0]);
+    print(evens[1]);
+
+    // forEach — lambda type inference
+    var items = [100, 200, 300];
+    items.forEach((x) => print(x));
+}

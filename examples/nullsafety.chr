@@ -1,0 +1,9 @@
+func main() {
+    var x: String? = nil;
+    var safe = x ?? "default";
+    print(safe);
+
+    var y: String? = "hello";
+    var val = y!;
+    print(val);
+}

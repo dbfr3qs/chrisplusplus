@@ -1,0 +1,39 @@
+// Sized integer, float, char types and conversions
+
+func main() {
+    // Sized integer types
+    var a: Int8 = 42;
+    var b: Int16 = 1000;
+    var c: Int32 = 100000;
+    var d: UInt = 42;
+    var e: Float32 = 3.14;
+    print(a);
+    print(b);
+    print(c);
+    print(d);
+    print(e);
+
+    // Regular types
+    var x: Int = 42;
+    var y: Float = 3.14;
+    print(x);
+    print(y);
+
+    // Char type
+    var ch: Char = 'A';
+    print(ch);
+
+    // Arithmetic on sized types
+    var sum: Int8 = 10;
+    var sum2: Int8 = 20;
+    print(sum + sum2);
+
+    // String interpolation with sized types
+    print("a=${a}, ch=${ch}, e=${e}");
+
+    // Type conversions
+    var i = ch.toInt();
+    print(i);
+    var s = a.toString();
+    print(s);
+}

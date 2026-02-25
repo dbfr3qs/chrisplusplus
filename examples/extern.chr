@@ -1,0 +1,10 @@
+// C FFI example: calling C library functions via extern
+
+extern func puts(s: String) -> Int;
+extern func abs(x: Int) -> Int;
+
+func main() {
+    puts("Hello from C puts!");
+    var x = abs(0 - 42);
+    print(x);
+}

@@ -1,0 +1,30 @@
+// Enums with associated values (algebraic data types)
+
+enum Result {
+    Ok(Int),
+    Error(String)
+}
+
+func main() {
+    var r = Result.Ok(42);
+
+    match r {
+        Ok(val) => {
+            print(val);
+        }
+        Error(msg) => {
+            print(msg);
+        }
+    }
+
+    var e = Result.Error("something went wrong");
+
+    match e {
+        Ok(val) => {
+            print(val);
+        }
+        Error(msg) => {
+            print(msg);
+        }
+    }
+}

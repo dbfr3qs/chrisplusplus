@@ -1,0 +1,9 @@
+func main() {
+    var double = (x: Int) => x * 2;
+    var result = double(5);
+    print(result);
+
+    var add = (a: Int, b: Int) => a + b;
+    var sum = add(3, 4);
+    print(sum);
+}

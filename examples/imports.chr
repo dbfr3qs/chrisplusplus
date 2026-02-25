@@ -1,0 +1,12 @@
+// Multi-file imports example: importing functions from another .chr file
+
+import "mathlib.chr";
+
+func main() {
+    var x = square(5);
+    var y = cube(3);
+    var z = add(x, y);
+    print(x);
+    print(y);
+    print(z);
+}
