@@ -5,12 +5,15 @@
 #include <fstream>
 #include <cstdio>
 #include <set>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "common/source_file.h"
 #include "common/diagnostic.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "sema/type_checker.h"
 #include "codegen/codegen.h"
+#include "fmt/formatter.h"
 
 namespace chris {
 
@@ -237,6 +240,371 @@ int buildCommand(const std::string& inputFile, bool jsonOutput) {
     return 0;
 }
 
+int runCommand(const std::string& inputFile, bool jsonOutput) {
+    int buildResult = buildCommand(inputFile, jsonOutput);
+    if (buildResult != 0) return buildResult;
+
+    // Determine the executable path (same as build output)
+    std::string baseName = inputFile.substr(0, inputFile.size() - 4);
+    std::string execPath = baseName;
+
+    // Make it a proper path if it's a relative name without directory
+    if (execPath.find('/') == std::string::npos) {
+        execPath = "./" + execPath;
+    }
+
+    std::cout << "Running: " << execPath << std::endl;
+    std::cout << "---" << std::endl;
+    int exitCode = std::system(execPath.c_str());
+
+    // Clean up the binary after running
+    std::remove(execPath.c_str());
+
+    // std::system returns the full status; extract the exit code
+    return WEXITSTATUS(exitCode);
+}
+
+int newCommand(const std::string& projectName) {
+    if (projectName.empty()) {
+        std::cerr << "error: no project name specified\n"
+                  << "Usage: chris new <project>" << std::endl;
+        return 1;
+    }
+
+    // Create project directory structure
+    std::string mkdirCmd = "mkdir -p " + projectName + "/src " + projectName + "/test";
+    if (std::system(mkdirCmd.c_str()) != 0) {
+        std::cerr << "error: could not create project directory" << std::endl;
+        return 1;
+    }
+
+    // Create main.chr
+    std::string mainPath = projectName + "/src/main.chr";
+    std::ofstream mainFile(mainPath);
+    if (!mainFile.is_open()) {
+        std::cerr << "error: could not create " << mainPath << std::endl;
+        return 1;
+    }
+    mainFile << "func main() {\n"
+             << "    print(\"Hello, world!\");\n"
+             << "}\n";
+    mainFile.close();
+
+    // Create chris.toml
+    std::string tomlPath = projectName + "/chris.toml";
+    std::ofstream tomlFile(tomlPath);
+    if (!tomlFile.is_open()) {
+        std::cerr << "error: could not create " << tomlPath << std::endl;
+        return 1;
+    }
+    tomlFile << "[package]\n"
+             << "name = \"" << projectName << "\"\n"
+             << "version = \"0.1.0\"\n"
+             << "\n"
+             << "[dependencies]\n";
+    tomlFile.close();
+
+    // Create test file
+    std::string testPath = projectName + "/test/main_test.chr";
+    std::ofstream testFile(testPath);
+    if (!testFile.is_open()) {
+        std::cerr << "error: could not create " << testPath << std::endl;
+        return 1;
+    }
+    testFile << "// Tests for " << projectName << "\n"
+             << "func test_example() {\n"
+             << "    // TODO: add tests\n"
+             << "}\n";
+    testFile.close();
+
+    std::cout << "Created project: " << projectName << std::endl;
+    std::cout << "  " << projectName << "/chris.toml" << std::endl;
+    std::cout << "  " << projectName << "/src/main.chr" << std::endl;
+    std::cout << "  " << projectName << "/test/main_test.chr" << std::endl;
+    std::cout << "\nTo build and run:\n"
+              << "  cd " << projectName << "\n"
+              << "  chris run src/main.chr" << std::endl;
+    return 0;
+}
+
+// Discover test .chr files in a directory
+std::vector<std::string> findTestFiles(const std::string& dir) {
+    std::vector<std::string> files;
+    DIR* d = opendir(dir.c_str());
+    if (!d) return files;
+    struct dirent* entry;
+    while ((entry = readdir(d)) != nullptr) {
+        std::string name = entry->d_name;
+        // Match test_*.chr or *_test.chr
+        if (name.size() >= 4 && name.substr(name.size() - 4) == ".chr") {
+            if (name.substr(0, 5) == "test_" ||
+                (name.size() >= 9 && name.substr(name.size() - 9) == "_test.chr")) {
+                files.push_back(dir + "/" + name);
+            }
+        }
+    }
+    closedir(d);
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
+// Extract names of test functions (func test_*) from a parsed program
+std::vector<std::string> findTestFunctions(Program& program) {
+    std::vector<std::string> names;
+    for (auto& decl : program.declarations) {
+        if (auto* func = dynamic_cast<FuncDecl*>(decl.get())) {
+            if (func->name.substr(0, 5) == "test_") {
+                names.push_back(func->name);
+            }
+        }
+    }
+    return names;
+}
+
+int testCommand(const std::string& inputFileOrDir, bool jsonOutput) {
+    DiagnosticEngine diagnostics;
+    std::vector<std::string> testFiles;
+
+    if (!inputFileOrDir.empty() &&
+        inputFileOrDir.size() >= 4 &&
+        inputFileOrDir.substr(inputFileOrDir.size() - 4) == ".chr") {
+        // Specific test file
+        testFiles.push_back(inputFileOrDir);
+    } else {
+        // Search for test files in test/ directory
+        std::string testDir = inputFileOrDir.empty() ? "test" : inputFileOrDir;
+        testFiles = findTestFiles(testDir);
+        if (testFiles.empty()) {
+            std::cerr << "error: no test files found in '" << testDir << "/'\n"
+                      << "hint: test files must match test_*.chr or *_test.chr" << std::endl;
+            return 1;
+        }
+    }
+
+    int totalPassed = 0;
+    int totalFailed = 0;
+    int totalTests = 0;
+
+    for (auto& testFile : testFiles) {
+        // Load and parse the test file to discover test functions
+        SourceFile source(testFile);
+        if (!source.load()) {
+            std::cerr << "error: could not open test file: " << testFile << std::endl;
+            totalFailed++;
+            continue;
+        }
+
+        Lexer lexer(source.content(), testFile, diagnostics);
+        auto tokens = lexer.tokenize();
+        if (diagnostics.hasErrors()) {
+            diagnostics.printAll(jsonOutput);
+            totalFailed++;
+            diagnostics = DiagnosticEngine(); // reset
+            continue;
+        }
+
+        Parser parser(tokens, diagnostics);
+        auto program = parser.parse();
+        if (diagnostics.hasErrors()) {
+            diagnostics.printAll(jsonOutput);
+            totalFailed++;
+            diagnostics = DiagnosticEngine();
+            continue;
+        }
+
+        auto testNames = findTestFunctions(program);
+        if (testNames.empty()) {
+            std::cout << "  (no test functions in " << testFile << ")" << std::endl;
+            continue;
+        }
+
+        // Generate a test harness source that includes the test file content
+        // and a main() that calls each test function with reporting
+        std::string harness = source.content();
+        harness += "\n";
+        harness += "// --- Generated test harness ---\n";
+        harness += "extern func chris_test_start(name: String);\n";
+        harness += "extern func chris_test_pass(name: String);\n";
+        harness += "extern func chris_test_fail(name: String);\n";
+        harness += "extern func chris_test_summary() -> Int;\n";
+        harness += "func main() -> Int {\n";
+
+        for (auto& name : testNames) {
+            harness += "    chris_test_start(\"" + name + "\");\n";
+            harness += "    try {\n";
+            harness += "        " + name + "();\n";
+            harness += "        chris_test_pass(\"" + name + "\");\n";
+            harness += "    } catch (e: Error) {\n";
+            harness += "        chris_test_fail(\"" + name + "\");\n";
+            harness += "    }\n";
+        }
+
+        harness += "    return chris_test_summary();\n";
+        harness += "}\n";
+
+        // Now compile the harness
+        DiagnosticEngine harnDiag;
+        Lexer harnLexer(harness, testFile, harnDiag);
+        auto harnTokens = harnLexer.tokenize();
+        if (harnDiag.hasErrors()) {
+            harnDiag.printAll(jsonOutput);
+            totalFailed += (int)testNames.size();
+            continue;
+        }
+
+        Parser harnParser(harnTokens, harnDiag);
+        auto harnProgram = harnParser.parse();
+        if (harnDiag.hasErrors()) {
+            harnDiag.printAll(jsonOutput);
+            totalFailed += (int)testNames.size();
+            continue;
+        }
+
+        // Process imports
+        std::string baseDir = dirName(testFile);
+        std::set<std::string> imported;
+        if (!processImports(harnProgram, baseDir, harnDiag, imported)) {
+            harnDiag.printAll(jsonOutput);
+            totalFailed += (int)testNames.size();
+            continue;
+        }
+
+        TypeChecker checker(harnDiag);
+        checker.check(harnProgram);
+        if (harnDiag.hasErrors()) {
+            harnDiag.printAll(jsonOutput);
+            totalFailed += (int)testNames.size();
+            continue;
+        }
+
+        CodeGen codegen(testFile, harnDiag);
+        if (!codegen.generate(harnProgram, checker.genericInstantiations())) {
+            harnDiag.printAll(jsonOutput);
+            totalFailed += (int)testNames.size();
+            continue;
+        }
+
+        // Emit object file
+        std::string baseName = testFile.substr(0, testFile.size() - 4);
+        std::string objectPath = baseName + "_test_harness.o";
+        std::string outputPath = baseName + "_test_harness";
+
+        if (!codegen.emitObjectFile(objectPath)) {
+            totalFailed += (int)testNames.size();
+            continue;
+        }
+
+        // Find runtime
+        std::string runtimePath;
+        std::vector<std::string> runtimeSearchPaths = {
+            "libchris_runtime.a",
+            "build/libchris_runtime.a",
+            "../build/libchris_runtime.a",
+        };
+        for (const auto& path : runtimeSearchPaths) {
+            std::ifstream test(path);
+            if (test.good()) {
+                runtimePath = path;
+                break;
+            }
+        }
+        if (runtimePath.empty()) {
+            std::cerr << "error: could not find chris runtime library" << std::endl;
+            totalFailed += (int)testNames.size();
+            continue;
+        }
+
+        // Link
+        if (!codegen.linkExecutable(objectPath, runtimePath, outputPath)) {
+            totalFailed += (int)testNames.size();
+            std::remove(objectPath.c_str());
+            continue;
+        }
+        std::remove(objectPath.c_str());
+
+        // Run the test binary
+        std::string execPath = outputPath;
+        if (execPath.find('/') == std::string::npos) {
+            execPath = "./" + execPath;
+        }
+
+        std::cout << "\n=== " << testFile << " (" << testNames.size() << " test(s)) ===" << std::endl;
+        int exitCode = std::system(execPath.c_str());
+        exitCode = WEXITSTATUS(exitCode);
+
+        // The test binary returns the number of failures
+        int passed = (int)testNames.size() - exitCode;
+        if (passed < 0) passed = 0;
+        totalPassed += passed;
+        totalFailed += exitCode;
+        totalTests += (int)testNames.size();
+
+        // Clean up
+        std::remove(outputPath.c_str());
+    }
+
+    // Final summary
+    std::cout << "\n========================================" << std::endl;
+    std::cout << "Total: " << totalTests << " test(s), "
+              << totalPassed << " passed, "
+              << totalFailed << " failed." << std::endl;
+
+    return totalFailed > 0 ? 1 : 0;
+}
+
+int fmtCommand(const std::string& inputFile, bool jsonOutput) {
+    DiagnosticEngine diagnostics;
+
+    if (inputFile.empty()) {
+        std::cerr << "error: no input file specified\n"
+                  << "Usage: chris fmt <file.chr>" << std::endl;
+        return 1;
+    }
+
+    if (inputFile.size() < 4 || inputFile.substr(inputFile.size() - 4) != ".chr") {
+        std::cerr << "error: input file must have .chr extension: " << inputFile << std::endl;
+        return 1;
+    }
+
+    // Load source file
+    SourceFile source(inputFile);
+    if (!source.load()) {
+        std::cerr << "error: could not open file: " << inputFile << std::endl;
+        return 1;
+    }
+
+    // Parse
+    Lexer lexer(source.content(), inputFile, diagnostics);
+    auto tokens = lexer.tokenize();
+    if (diagnostics.hasErrors()) {
+        diagnostics.printAll(jsonOutput);
+        return 1;
+    }
+
+    Parser parser(tokens, diagnostics);
+    auto program = parser.parse();
+    if (diagnostics.hasErrors()) {
+        diagnostics.printAll(jsonOutput);
+        return 1;
+    }
+
+    // Format
+    Formatter formatter;
+    std::string formatted = formatter.format(program);
+
+    // Write back to file
+    std::ofstream out(inputFile);
+    if (!out.is_open()) {
+        std::cerr << "error: could not write to file: " << inputFile << std::endl;
+        return 1;
+    }
+    out << formatted;
+    out.close();
+
+    std::cout << "Formatted: " << inputFile << std::endl;
+    return 0;
+}
+
 } // namespace chris
 
 int main(int argc, char* argv[]) {
@@ -255,20 +623,16 @@ int main(int argc, char* argv[]) {
     if (opts.command == "build") {
         return chris::buildCommand(opts.inputFile, opts.jsonOutput);
     } else if (opts.command == "run") {
-        std::cerr << "error: 'run' command not yet implemented" << std::endl;
-        return 1;
+        return chris::runCommand(opts.inputFile, opts.jsonOutput);
     } else if (opts.command == "test") {
-        std::cerr << "error: 'test' command not yet implemented" << std::endl;
-        return 1;
+        return chris::testCommand(opts.inputFile, opts.jsonOutput);
     } else if (opts.command == "fmt") {
-        std::cerr << "error: 'fmt' command not yet implemented" << std::endl;
-        return 1;
+        return chris::fmtCommand(opts.inputFile, opts.jsonOutput);
     } else if (opts.command == "lint") {
         std::cerr << "error: 'lint' command not yet implemented" << std::endl;
         return 1;
     } else if (opts.command == "new") {
-        std::cerr << "error: 'new' command not yet implemented" << std::endl;
-        return 1;
+        return chris::newCommand(opts.inputFile); // inputFile holds the project name
     } else {
         std::cerr << "error: unknown command '" << opts.command << "'\n"
                   << "Run 'chris --help' for usage." << std::endl;

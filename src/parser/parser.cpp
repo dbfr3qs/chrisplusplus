@@ -93,8 +93,25 @@ StmtPtr Parser::parseDeclaration() {
         bool isPublic = check(TokenType::KwPublic);
         advance(); // consume access modifier
         skipComments();
+        if (check(TokenType::KwShared)) {
+            advance(); // consume 'shared'
+            skipComments();
+            auto cls = parseClassDecl(isPublic);
+            if (cls) {
+                auto* classDecl = dynamic_cast<ClassDecl*>(cls.get());
+                if (classDecl) classDecl->isShared = true;
+            }
+            return cls;
+        }
         if (check(TokenType::KwClass)) {
             return parseClassDecl(isPublic);
+        }
+        if (check(TokenType::KwAsync)) {
+            advance(); // consume 'async'
+            skipComments();
+            auto func = parseFuncDecl();
+            if (func) func->isAsync = true;
+            return func;
         }
         if (check(TokenType::KwFunc)) {
             auto func = parseFuncDecl();
@@ -113,8 +130,25 @@ StmtPtr Parser::parseDeclaration() {
     if (check(TokenType::KwExtern)) {
         return parseExternFuncDecl();
     }
+    if (check(TokenType::KwShared)) {
+        advance(); // consume 'shared'
+        skipComments();
+        auto cls = parseClassDecl(false);
+        if (cls) {
+            auto* classDecl = dynamic_cast<ClassDecl*>(cls.get());
+            if (classDecl) classDecl->isShared = true;
+        }
+        return cls;
+    }
     if (check(TokenType::KwClass)) {
         return parseClassDecl(false);
+    }
+    if (check(TokenType::KwAsync)) {
+        advance(); // consume 'async'
+        skipComments();
+        auto func = parseFuncDecl();
+        if (func) func->isAsync = true;
+        return func;
     }
     if (check(TokenType::KwFunc)) {
         return parseFuncDecl();
@@ -292,6 +326,15 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl(bool isPublic) {
                 field->access = memberAccess;
                 classDecl->fields.push_back(std::move(field));
             }
+        } else if (check(TokenType::KwAsync)) {
+            advance(); // consume 'async'
+            skipComments();
+            auto method = parseFuncDecl();
+            if (method) {
+                method->isAsync = true;
+                method->access = memberAccess;
+                classDecl->methods.push_back(std::move(method));
+            }
         } else if (check(TokenType::KwFunc)) {
             auto method = parseFuncDecl();
             if (method) {
@@ -456,7 +499,18 @@ std::unique_ptr<FuncDecl> Parser::parseFuncDecl() {
     expect(TokenType::RightParen, "Expected ')' after parameters");
 
     TypeExprPtr returnType = nullptr;
+    AsyncKind asyncKind = AsyncKind::None;
     if (match(TokenType::Arrow)) {
+        // Check for io/compute annotation before the return type
+        if (check(TokenType::KwIo)) {
+            asyncKind = AsyncKind::Io;
+            advance();
+            skipComments();
+        } else if (check(TokenType::KwCompute)) {
+            asyncKind = AsyncKind::Compute;
+            advance();
+            skipComments();
+        }
         returnType = parseTypeExpr();
     }
 
@@ -474,6 +528,7 @@ std::unique_ptr<FuncDecl> Parser::parseFuncDecl() {
     auto func = std::make_unique<FuncDecl>();
     func->location = loc;
     func->name = name.value;
+    func->asyncKind = asyncKind;
     func->parameters = std::move(params);
     func->returnType = std::move(returnType);
     func->body = std::move(body);
@@ -518,6 +573,18 @@ StmtPtr Parser::parseStatement() {
     // Try/catch/finally
     if (check(TokenType::KwTry)) {
         return parseTryCatchStmt();
+    }
+
+    // Unsafe block
+    if (check(TokenType::KwUnsafe)) {
+        auto loc = current().location;
+        advance(); // consume 'unsafe'
+        skipComments();
+        auto body = parseBlock();
+        auto unsafeBlock = std::make_unique<UnsafeBlock>();
+        unsafeBlock->location = loc;
+        unsafeBlock->body.reset(static_cast<Block*>(body.release()));
+        return unsafeBlock;
     }
 
     // Match expression used as a statement (no trailing semicolon needed)
@@ -980,6 +1047,18 @@ ExprPtr Parser::parseMultiplication() {
 }
 
 ExprPtr Parser::parseUnary() {
+    // await expression: await expr
+    if (check(TokenType::KwAwait)) {
+        SourceLocation loc = current().location;
+        advance(); // consume 'await'
+        auto operand = parseUnary();
+
+        auto awaitExpr = std::make_unique<AwaitExpr>();
+        awaitExpr->location = loc;
+        awaitExpr->operand = std::move(operand);
+        return awaitExpr;
+    }
+
     if (check(TokenType::Minus) || check(TokenType::Not)) {
         SourceLocation loc = current().location;
         std::string op = current().value;

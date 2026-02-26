@@ -60,8 +60,10 @@ private:
     TypePtr checkArrayLiteralExpr(ArrayLiteralExpr& expr);
     TypePtr checkIndexExpr(IndexExpr& expr);
     TypePtr checkIfExpr(IfExpr& expr);
+    TypePtr checkAwaitExpr(AwaitExpr& expr);
     void checkThrowStmt(ThrowStmt& stmt);
     void checkTryCatchStmt(TryCatchStmt& stmt);
+    void checkUnsafeBlock(UnsafeBlock& stmt);
 
     // Helpers
     TypePtr resolveTypeAnnotation(TypeExpr& typeExpr);
@@ -84,6 +86,8 @@ private:
     std::vector<std::string> currentTypeParams_; // type params in scope during generic class checking
     std::vector<GenericInstantiation> genericInstantiations_; // collected instantiations for codegen
     std::vector<TypePtr>* expectedLambdaParamTypes_ = nullptr; // propagated from call site for lambda inference
+    bool inAsyncFunction_ = false; // true when checking inside an async function body
+    bool inUnsafeBlock_ = false; // true when checking inside an unsafe block
 };
 
 } // namespace chris

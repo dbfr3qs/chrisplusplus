@@ -69,6 +69,7 @@ private:
     llvm::Value* emitArrayLiteralExpr(ArrayLiteralExpr& expr);
     llvm::Value* emitIndexExpr(IndexExpr& expr);
     llvm::Value* emitIfExpr(IfExpr& expr);
+    llvm::Value* emitAwaitExpr(AwaitExpr& expr);
     void emitEnumDecl(EnumDecl& decl);
     void emitThrowStmt(ThrowStmt& stmt);
     void emitTryCatchStmt(TryCatchStmt& stmt);
@@ -114,6 +115,7 @@ private:
         std::vector<std::string> fieldNames;
         std::vector<std::string> methodNames;
         std::string parentClass; // empty if no inheritance
+        bool isShared = false; // true for shared classes (has mutex field at index 0)
     };
     std::unordered_map<std::string, ClassInfo> classInfos_;
     llvm::Value* thisPtr_ = nullptr; // current 'this' pointer in method
@@ -171,9 +173,28 @@ private:
     llvm::Function* runtimeArrayFilter_ = nullptr;
     llvm::Function* runtimeArrayForEach_ = nullptr;
     llvm::StructType* arrayStructType_ = nullptr; // {i64 length, ptr data}
+    llvm::StructType* futureStructType_ = nullptr; // opaque Future* from runtime
 
     // Track variable -> array element type for indexing
     std::unordered_map<std::string, llvm::Type*> varArrayElemType_;
+
+    // Async runtime functions
+    llvm::Function* runtimeAsyncSpawn_ = nullptr;
+    llvm::Function* runtimeAsyncAwait_ = nullptr;
+    llvm::Function* runtimeAsyncRunLoop_ = nullptr;
+
+    // Shared class mutex runtime functions
+    llvm::Function* runtimeMutexInit_ = nullptr;
+    llvm::Function* runtimeMutexLock_ = nullptr;
+    llvm::Function* runtimeMutexUnlock_ = nullptr;
+    llvm::Function* runtimeMutexDestroy_ = nullptr;
+
+    // Channel runtime functions
+    llvm::Function* runtimeChannelCreate_ = nullptr;
+    llvm::Function* runtimeChannelSend_ = nullptr;
+    llvm::Function* runtimeChannelRecv_ = nullptr;
+    llvm::Function* runtimeChannelClose_ = nullptr;
+    llvm::Function* runtimeChannelDestroy_ = nullptr;
 };
 
 } // namespace chris

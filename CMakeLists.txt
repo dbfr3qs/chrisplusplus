@@ -28,6 +28,7 @@ set(CHRIS_SOURCES
     src/sema/symbol_table.cpp
     src/sema/type_checker.cpp
     src/codegen/codegen.cpp
+    src/fmt/formatter.cpp
 )
 
 add_executable(chris ${CHRIS_SOURCES})
@@ -75,6 +76,7 @@ if(BUILD_TESTS)
         src/sema/symbol_table.cpp
         src/sema/type_checker.cpp
         src/codegen/codegen.cpp
+        src/fmt/formatter.cpp
     )
 
     add_library(chris_lib STATIC ${CHRIS_LIB_SOURCES})
@@ -89,6 +91,10 @@ if(BUILD_TESTS)
         tests/parser/test_parser.cpp
         tests/sema/test_type_checker.cpp
         tests/codegen/test_codegen.cpp
+        tests/async/test_async.cpp
+        tests/shared/test_shared.cpp
+        tests/unsafe/test_unsafe.cpp
+        tests/fmt/test_formatter.cpp
     )
     target_link_libraries(chris_tests chris_lib GTest::gtest GTest::gtest_main)
     target_include_directories(chris_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

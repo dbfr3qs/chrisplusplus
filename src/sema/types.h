@@ -29,6 +29,7 @@ enum class TypeKind {
     Enum,
     TypeParameter, // generic type parameter (e.g. T)
     Array,
+    Future,
     Unknown
 };
 
@@ -97,6 +98,7 @@ struct ClassMethod {
 
 struct ClassType : Type {
     std::string name;
+    bool isShared = false; // true for shared classes (thread-safe synchronized access)
     std::shared_ptr<ClassType> parent; // base class (nullptr if none)
     std::vector<std::string> interfaceNames; // implemented interfaces
     std::vector<ClassField> fields;
@@ -141,6 +143,17 @@ struct ArrayType : Type {
     bool equals(const Type& other) const override {
         if (other.kind() != TypeKind::Array) return false;
         return elementType->equals(*static_cast<const ArrayType&>(other).elementType);
+    }
+};
+
+struct FutureType : Type {
+    TypePtr innerType;
+    FutureType(TypePtr inner) : innerType(std::move(inner)) {}
+    TypeKind kind() const override { return TypeKind::Future; }
+    std::string toString() const override { return "Future<" + innerType->toString() + ">"; }
+    bool equals(const Type& other) const override {
+        if (other.kind() != TypeKind::Future) return false;
+        return innerType->equals(*static_cast<const FutureType&>(other).innerType);
     }
 };
 
@@ -210,6 +223,7 @@ TypePtr makeFunctionType(std::vector<TypePtr> params, TypePtr ret);
 TypePtr makeClassType(const std::string& name);
 TypePtr makeTypeParameter(const std::string& name);
 TypePtr makeArrayType(TypePtr elementType);
+TypePtr makeFutureType(TypePtr innerType);
 
 // Substitute type parameters with concrete types in a given type
 TypePtr substituteTypeParams(

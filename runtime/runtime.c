@@ -3,6 +3,7 @@
 #include <string.h>
 #include <setjmp.h>
 #include <ctype.h>
+#include <pthread.h>
 
 // Exception handling support
 #define CHRIS_MAX_TRY_DEPTH 64
@@ -361,4 +362,317 @@ void chris_str_split(const char* str, const char* delim, ChrisArray* out) {
     }
     out->length = (long long)count;
     out->data = parts;
+}
+
+// ============================================================================
+// Test Runtime Support
+// ============================================================================
+
+static int chris_test_passed = 0;
+static int chris_test_failed = 0;
+
+void chris_test_start(const char* name) {
+    printf("  [ RUN  ] %s\n", name);
+}
+
+void chris_test_pass(const char* name) {
+    printf("  [  OK  ] %s\n", name);
+    chris_test_passed++;
+}
+
+void chris_test_fail(const char* name) {
+    printf("  [ FAIL ] %s\n", name);
+    chris_test_failed++;
+}
+
+// Returns the number of failed tests (used as exit code)
+int chris_test_summary(void) {
+    int total = chris_test_passed + chris_test_failed;
+    printf("\n%d test(s) ran: %d passed, %d failed.\n", total, chris_test_passed, chris_test_failed);
+    return chris_test_failed;
+}
+
+// assert_eq(a, b) — fails the current test if a != b
+void chris_assert_eq(long long a, long long b, const char* expr) {
+    if (a != b) {
+        printf("    ASSERTION FAILED: %s (expected %lld, got %lld)\n", expr, b, a);
+        chris_throw("assertion failed");
+    }
+}
+
+// assert_true(cond) — fails the current test if cond is false
+void chris_assert_true(long long cond, const char* expr) {
+    if (!cond) {
+        printf("    ASSERTION FAILED: %s (expected true)\n", expr);
+        chris_throw("assertion failed");
+    }
+}
+
+// ============================================================================
+// Shared Class Mutex Support
+// ============================================================================
+
+// Initialize a pthread mutex at the given pointer
+void chris_mutex_init(void* ptr) {
+    pthread_mutex_init((pthread_mutex_t*)ptr, NULL);
+}
+
+// Lock a pthread mutex
+void chris_mutex_lock(void* ptr) {
+    pthread_mutex_lock((pthread_mutex_t*)ptr);
+}
+
+// Unlock a pthread mutex
+void chris_mutex_unlock(void* ptr) {
+    pthread_mutex_unlock((pthread_mutex_t*)ptr);
+}
+
+// Destroy a pthread mutex
+void chris_mutex_destroy(void* ptr) {
+    pthread_mutex_destroy((pthread_mutex_t*)ptr);
+}
+
+// ============================================================================
+// Channel Runtime Support
+// ============================================================================
+
+#define CHRIS_CHANNEL_MAX_BUFFER 4096
+
+typedef struct chris_channel {
+    long long* buffer;
+    int capacity;
+    int count;
+    int head;       // read index
+    int tail;       // write index
+    int closed;
+    pthread_mutex_t mutex;
+    pthread_cond_t  not_empty;
+    pthread_cond_t  not_full;
+} chris_channel;
+
+// Create a new channel with the given buffer capacity
+chris_channel* chris_channel_create(long long capacity) {
+    if (capacity <= 0) capacity = 1;
+    if (capacity > CHRIS_CHANNEL_MAX_BUFFER) capacity = CHRIS_CHANNEL_MAX_BUFFER;
+    chris_channel* ch = (chris_channel*)malloc(sizeof(chris_channel));
+    ch->buffer = (long long*)malloc(sizeof(long long) * capacity);
+    ch->capacity = (int)capacity;
+    ch->count = 0;
+    ch->head = 0;
+    ch->tail = 0;
+    ch->closed = 0;
+    pthread_mutex_init(&ch->mutex, NULL);
+    pthread_cond_init(&ch->not_empty, NULL);
+    pthread_cond_init(&ch->not_full, NULL);
+    return ch;
+}
+
+// Send a value into the channel (blocks if full, fails if closed)
+// Returns 1 on success, 0 if channel is closed
+int chris_channel_send(chris_channel* ch, long long value) {
+    pthread_mutex_lock(&ch->mutex);
+    while (ch->count == ch->capacity && !ch->closed) {
+        pthread_cond_wait(&ch->not_full, &ch->mutex);
+    }
+    if (ch->closed) {
+        pthread_mutex_unlock(&ch->mutex);
+        return 0;
+    }
+    ch->buffer[ch->tail] = value;
+    ch->tail = (ch->tail + 1) % ch->capacity;
+    ch->count++;
+    pthread_cond_signal(&ch->not_empty);
+    pthread_mutex_unlock(&ch->mutex);
+    return 1;
+}
+
+// Receive a value from the channel (blocks if empty)
+// Returns 1 on success (value written to *out), 0 if channel is closed and empty
+int chris_channel_recv(chris_channel* ch, long long* out) {
+    pthread_mutex_lock(&ch->mutex);
+    while (ch->count == 0 && !ch->closed) {
+        pthread_cond_wait(&ch->not_empty, &ch->mutex);
+    }
+    if (ch->count == 0 && ch->closed) {
+        pthread_mutex_unlock(&ch->mutex);
+        return 0;
+    }
+    *out = ch->buffer[ch->head];
+    ch->head = (ch->head + 1) % ch->capacity;
+    ch->count--;
+    pthread_cond_signal(&ch->not_full);
+    pthread_mutex_unlock(&ch->mutex);
+    return 1;
+}
+
+// Close the channel — no more sends allowed, pending receives drain remaining values
+void chris_channel_close(chris_channel* ch) {
+    pthread_mutex_lock(&ch->mutex);
+    ch->closed = 1;
+    pthread_cond_broadcast(&ch->not_empty);
+    pthread_cond_broadcast(&ch->not_full);
+    pthread_mutex_unlock(&ch->mutex);
+}
+
+// Destroy the channel and free resources
+void chris_channel_destroy(chris_channel* ch) {
+    pthread_mutex_destroy(&ch->mutex);
+    pthread_cond_destroy(&ch->not_empty);
+    pthread_cond_destroy(&ch->not_full);
+    free(ch->buffer);
+    free(ch);
+}
+
+// ============================================================================
+// Async/Await Runtime Support
+// ============================================================================
+
+// Async task kind
+#define CHRIS_ASYNC_IO      0
+#define CHRIS_ASYNC_COMPUTE 1
+
+// Task state
+#define CHRIS_TASK_PENDING   0
+#define CHRIS_TASK_RUNNING   1
+#define CHRIS_TASK_COMPLETED 2
+
+// Thunk function type: takes void* args, returns i64 result
+typedef long long (*chris_thunk_fn)(void*);
+
+// Future/Task structure
+typedef struct chris_future {
+    chris_thunk_fn func;       // the thunk function to execute
+    void*          args;       // packed arguments pointer
+    int            kind;       // CHRIS_ASYNC_IO or CHRIS_ASYNC_COMPUTE
+    int            state;      // CHRIS_TASK_PENDING/RUNNING/COMPLETED
+    long long      result;     // return value (valid when state == COMPLETED)
+    pthread_t      thread;     // thread handle
+    pthread_mutex_t mutex;     // protects state and result
+    pthread_cond_t  cond;      // signaled when task completes
+} chris_future;
+
+// Global task registry for run_loop
+#define CHRIS_MAX_TASKS 1024
+static chris_future* chris_task_registry[CHRIS_MAX_TASKS];
+static int chris_task_count = 0;
+static pthread_mutex_t chris_registry_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void chris_register_task(chris_future* f) {
+    pthread_mutex_lock(&chris_registry_mutex);
+    if (chris_task_count < CHRIS_MAX_TASKS) {
+        chris_task_registry[chris_task_count++] = f;
+    }
+    pthread_mutex_unlock(&chris_registry_mutex);
+}
+
+// Thread entry point
+static void* chris_async_thread_entry(void* arg) {
+    chris_future* f = (chris_future*)arg;
+
+    pthread_mutex_lock(&f->mutex);
+    f->state = CHRIS_TASK_RUNNING;
+    pthread_mutex_unlock(&f->mutex);
+
+    // Execute the thunk
+    long long res = f->func(f->args);
+
+    pthread_mutex_lock(&f->mutex);
+    f->result = res;
+    f->state = CHRIS_TASK_COMPLETED;
+    pthread_cond_signal(&f->cond);
+    pthread_mutex_unlock(&f->mutex);
+
+    // Free the packed args (allocated by codegen via malloc)
+    if (f->args) {
+        free(f->args);
+        f->args = NULL;
+    }
+
+    return NULL;
+}
+
+// chris_async_spawn(func_ptr, arg_ptr, kind) -> Future*
+void* chris_async_spawn(void* func_ptr, void* arg_ptr, int kind) {
+    chris_future* f = (chris_future*)malloc(sizeof(chris_future));
+    if (!f) {
+        fprintf(stderr, "Error: failed to allocate async task\n");
+        exit(1);
+    }
+
+    f->func   = (chris_thunk_fn)func_ptr;
+    f->args   = arg_ptr;
+    f->kind   = kind;
+    f->state  = CHRIS_TASK_PENDING;
+    f->result = 0;
+    pthread_mutex_init(&f->mutex, NULL);
+    pthread_cond_init(&f->cond, NULL);
+
+    chris_register_task(f);
+
+    // Launch the task on a new thread
+    int rc = pthread_create(&f->thread, NULL, chris_async_thread_entry, f);
+    if (rc != 0) {
+        fprintf(stderr, "Error: failed to create async thread (rc=%d)\n", rc);
+        exit(1);
+    }
+    // Detach so resources are cleaned up automatically after join/await
+    // (we join explicitly in await, but detach as safety net)
+
+    return (void*)f;
+}
+
+// chris_async_await(Future*) -> i64
+long long chris_async_await(void* future_ptr) {
+    chris_future* f = (chris_future*)future_ptr;
+    if (!f) return 0;
+
+    // Wait for the task to complete
+    pthread_mutex_lock(&f->mutex);
+    while (f->state != CHRIS_TASK_COMPLETED) {
+        pthread_cond_wait(&f->cond, &f->mutex);
+    }
+    long long result = f->result;
+    pthread_mutex_unlock(&f->mutex);
+
+    // Join the thread to clean up
+    pthread_join(f->thread, NULL);
+
+    // Clean up the future
+    pthread_mutex_destroy(&f->mutex);
+    pthread_cond_destroy(&f->cond);
+    free(f);
+
+    return result;
+}
+
+// chris_async_run_loop() -> void
+// Drains all pending tasks. Called at end of main.
+void chris_async_run_loop(void) {
+    pthread_mutex_lock(&chris_registry_mutex);
+    int count = chris_task_count;
+    pthread_mutex_unlock(&chris_registry_mutex);
+
+    for (int i = 0; i < count; i++) {
+        chris_future* f = chris_task_registry[i];
+        if (!f) continue;
+
+        pthread_mutex_lock(&f->mutex);
+        int state = f->state;
+        pthread_mutex_unlock(&f->mutex);
+
+        if (state != CHRIS_TASK_COMPLETED) {
+            // Wait for it
+            pthread_mutex_lock(&f->mutex);
+            while (f->state != CHRIS_TASK_COMPLETED) {
+                pthread_cond_wait(&f->cond, &f->mutex);
+            }
+            pthread_mutex_unlock(&f->mutex);
+            pthread_join(f->thread, NULL);
+        }
+    }
+
+    // Reset registry
+    pthread_mutex_lock(&chris_registry_mutex);
+    chris_task_count = 0;
+    pthread_mutex_unlock(&chris_registry_mutex);
 }

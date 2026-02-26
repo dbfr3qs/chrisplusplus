@@ -1,0 +1,44 @@
+// Shared Class Example
+// Demonstrates thread-safe shared classes with automatic synchronization
+
+// A shared class has all field access automatically synchronized via a mutex.
+// This makes it safe to use from multiple threads without manual locking.
+
+shared class Counter {
+    public var count: Int;
+
+    public func increment() {
+        this.count = this.count + 1;
+    }
+
+    public func get() -> Int {
+        return this.count;
+    }
+}
+
+// A regular (non-shared) class for comparison
+class RegularCounter {
+    public var count: Int;
+
+    public func increment() {
+        this.count = this.count + 1;
+    }
+}
+
+func main() {
+    // Create a shared counter — mutex is initialized automatically
+    var counter = Counter { count: 0 };
+
+    // Field access is automatically wrapped with lock/unlock
+    counter.increment();
+    counter.increment();
+    counter.increment();
+
+    let value = counter.get();
+    print(value);  // 3
+
+    // Regular class has no synchronization overhead
+    var regular = RegularCounter { count: 10 };
+    regular.increment();
+    print(regular.count);  // 11
+}

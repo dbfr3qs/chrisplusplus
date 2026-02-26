@@ -1,0 +1,22 @@
+// Unsafe Block Example
+// Demonstrates the unsafe escape hatch for low-level operations
+
+// External C functions can be called from unsafe blocks
+extern func puts(s: String) -> Int;
+extern func printf(fmt: String, ...) -> Int;
+
+func main() {
+    // Normal safe code
+    print("Safe code runs normally");
+
+    // Unsafe block allows calling raw C functions
+    unsafe {
+        puts("Hello from C puts!");
+        printf("Printf works too: %d\n", 42);
+    }
+
+    // Back to safe code
+    var x = 10;
+    var y = 20;
+    print(x + y);
+}

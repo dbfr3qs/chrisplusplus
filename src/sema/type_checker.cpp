@@ -28,6 +28,7 @@ void TypeChecker::check(Program& program) {
         } else if (auto* cls = dynamic_cast<ClassDecl*>(decl.get())) {
             auto classType = std::make_shared<ClassType>();
             classType->name = cls->name;
+            classType->isShared = cls->isShared;
             classType->typeParams = cls->typeParams;
             classTypes_[cls->name] = classType;
             symbols_.define(cls->name, classType, false, cls->location);
@@ -63,6 +64,10 @@ void TypeChecker::check(Program& program) {
             TypePtr retType = func->returnType
                 ? resolveTypeAnnotation(*func->returnType)
                 : voidType();
+            // Async functions return Future<T> instead of T
+            if (func->isAsync) {
+                retType = makeFutureType(retType);
+            }
             auto funcType = makeFunctionType(std::move(paramTypes), retType);
             if (!symbols_.define(func->name, funcType, false, func->location)) {
                 diagnostics_.error("E3001",
@@ -187,11 +192,23 @@ void TypeChecker::checkFuncDecl(FuncDecl& func) {
         ? resolveTypeAnnotation(*func.returnType)
         : voidType();
 
+    // Track async context
+    bool prevAsync = inAsyncFunction_;
+    inAsyncFunction_ = func.isAsync;
+
+    // Validate io/compute annotation requires async
+    if (func.asyncKind != AsyncKind::None && !func.isAsync) {
+        diagnostics_.error("E3030",
+            "io/compute annotation requires 'async' keyword on function '" + func.name + "'",
+            func.location);
+    }
+
     // Check body
     for (auto& stmt : func.body->statements) {
         checkStmt(*stmt);
     }
 
+    inAsyncFunction_ = prevAsync;
     currentReturnType_ = prevReturnType;
     symbols_.popScope();
 }
@@ -350,6 +367,8 @@ void TypeChecker::checkStmt(Stmt& stmt) {
         checkThrowStmt(*throwStmt);
     } else if (auto* tryCatch = dynamic_cast<TryCatchStmt*>(&stmt)) {
         checkTryCatchStmt(*tryCatch);
+    } else if (auto* unsafeBlock = dynamic_cast<UnsafeBlock*>(&stmt)) {
+        checkUnsafeBlock(*unsafeBlock);
     }
 }
 
@@ -480,6 +499,7 @@ TypePtr TypeChecker::checkExpr(Expr& expr) {
     if (auto* e = dynamic_cast<ArrayLiteralExpr*>(&expr))           return checkArrayLiteralExpr(*e);
     if (auto* e = dynamic_cast<IndexExpr*>(&expr))                  return checkIndexExpr(*e);
     if (auto* e = dynamic_cast<IfExpr*>(&expr))                     return checkIfExpr(*e);
+    if (auto* e = dynamic_cast<AwaitExpr*>(&expr))                   return checkAwaitExpr(*e);
 
     return unknownType();
 }
@@ -1001,6 +1021,12 @@ TypePtr TypeChecker::resolveTypeAnnotation(TypeExpr& typeExpr) {
             return makeArrayType(elemType);
         }
 
+        // Built-in Future<T> type
+        if (named->name == "Future" && !named->typeArgs.empty()) {
+            auto innerType = resolveTypeAnnotation(*named->typeArgs[0]);
+            return makeFutureType(innerType);
+        }
+
         auto type = resolveTypeName(named->name);
         if (!type) {
             // Check if it's a class type
@@ -1241,6 +1267,26 @@ TypePtr TypeChecker::checkIfExpr(IfExpr& expr) {
     return thenType ? thenType : elseType;
 }
 
+TypePtr TypeChecker::checkAwaitExpr(AwaitExpr& expr) {
+    if (!inAsyncFunction_) {
+        diagnostics_.error("E3031",
+            "'await' can only be used inside an async function",
+            expr.location);
+    }
+
+    auto operandType = checkExpr(*expr.operand);
+    if (!operandType) return unknownType();
+
+    // If the operand is a Future<T>, unwrap to T
+    if (operandType->kind() == TypeKind::Future) {
+        auto& futureType = static_cast<const FutureType&>(*operandType);
+        return futureType.innerType;
+    }
+
+    // Awaiting a non-future value just returns the value itself (implicit wrap/unwrap)
+    return operandType;
+}
+
 TypePtr TypeChecker::checkArrayLiteralExpr(ArrayLiteralExpr& expr) {
     if (expr.elements.empty()) {
         return makeArrayType(unknownType());
@@ -1312,6 +1358,13 @@ void TypeChecker::checkTryCatchStmt(TryCatchStmt& stmt) {
     if (stmt.finallyBlock) {
         checkBlock(*stmt.finallyBlock);
     }
+}
+
+void TypeChecker::checkUnsafeBlock(UnsafeBlock& stmt) {
+    bool prevUnsafe = inUnsafeBlock_;
+    inUnsafeBlock_ = true;
+    checkBlock(*stmt.body);
+    inUnsafeBlock_ = prevUnsafe;
 }
 
 std::string TypeChecker::mangledGenericName(const std::string& name, const std::vector<TypePtr>& typeArgs) {

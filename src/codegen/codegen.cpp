@@ -212,6 +212,72 @@ void CodeGen::declareRuntimeFunctions() {
 
     // Array struct type: {i64 length, ptr data}
     arrayStructType_ = llvm::StructType::create(*context_, {i64Ty, i8PtrTy}, "Array");
+
+    // Future struct type (opaque pointer — runtime manages internals)
+    futureStructType_ = llvm::StructType::create(*context_, "Future");
+
+    // chris_async_spawn(func_ptr, arg_ptr, kind) -> Future*
+    // kind: 0=io, 1=compute
+    auto* asyncSpawnTy = llvm::FunctionType::get(i8PtrTy, {i8PtrTy, i8PtrTy, i32Ty}, false);
+    runtimeAsyncSpawn_ = llvm::Function::Create(asyncSpawnTy, llvm::Function::ExternalLinkage,
+                                                  "chris_async_spawn", module_.get());
+
+    // chris_async_await(Future*) -> i64 (result as i64, caller reinterprets)
+    auto* asyncAwaitTy = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimeAsyncAwait_ = llvm::Function::Create(asyncAwaitTy, llvm::Function::ExternalLinkage,
+                                                  "chris_async_await", module_.get());
+
+    // chris_async_run_loop() -> void (drain the event loop, called at end of main)
+    auto* asyncRunLoopTy = llvm::FunctionType::get(voidTy, {}, false);
+    runtimeAsyncRunLoop_ = llvm::Function::Create(asyncRunLoopTy, llvm::Function::ExternalLinkage,
+                                                    "chris_async_run_loop", module_.get());
+
+    // Shared class mutex runtime functions
+    // chris_mutex_init(ptr) -> void  (ptr points to mutex bytes in struct)
+    auto* mutexInitTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeMutexInit_ = llvm::Function::Create(mutexInitTy, llvm::Function::ExternalLinkage,
+                                                "chris_mutex_init", module_.get());
+
+    // chris_mutex_lock(ptr) -> void
+    auto* mutexLockTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeMutexLock_ = llvm::Function::Create(mutexLockTy, llvm::Function::ExternalLinkage,
+                                                "chris_mutex_lock", module_.get());
+
+    // chris_mutex_unlock(ptr) -> void
+    auto* mutexUnlockTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeMutexUnlock_ = llvm::Function::Create(mutexUnlockTy, llvm::Function::ExternalLinkage,
+                                                  "chris_mutex_unlock", module_.get());
+
+    // chris_mutex_destroy(ptr) -> void
+    auto* mutexDestroyTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeMutexDestroy_ = llvm::Function::Create(mutexDestroyTy, llvm::Function::ExternalLinkage,
+                                                    "chris_mutex_destroy", module_.get());
+
+    // Channel runtime functions
+    // chris_channel_create(i64 capacity) -> ptr
+    auto* chanCreateTy = llvm::FunctionType::get(i8PtrTy, {i64Ty}, false);
+    runtimeChannelCreate_ = llvm::Function::Create(chanCreateTy, llvm::Function::ExternalLinkage,
+                                                    "chris_channel_create", module_.get());
+
+    // chris_channel_send(ptr ch, i64 value) -> i32 (1=ok, 0=closed)
+    auto* chanSendTy = llvm::FunctionType::get(i32Ty, {i8PtrTy, i64Ty}, false);
+    runtimeChannelSend_ = llvm::Function::Create(chanSendTy, llvm::Function::ExternalLinkage,
+                                                  "chris_channel_send", module_.get());
+
+    // chris_channel_recv(ptr ch, ptr out) -> i32 (1=ok, 0=closed+empty)
+    auto* chanRecvTy = llvm::FunctionType::get(i32Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeChannelRecv_ = llvm::Function::Create(chanRecvTy, llvm::Function::ExternalLinkage,
+                                                  "chris_channel_recv", module_.get());
+
+    // chris_channel_close(ptr ch) -> void
+    auto* chanCloseTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeChannelClose_ = llvm::Function::Create(chanCloseTy, llvm::Function::ExternalLinkage,
+                                                   "chris_channel_close", module_.get());
+
+    // chris_channel_destroy(ptr ch) -> void
+    auto* chanDestroyTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeChannelDestroy_ = llvm::Function::Create(chanDestroyTy, llvm::Function::ExternalLinkage,
+                                                     "chris_channel_destroy", module_.get());
 }
 
 bool CodeGen::generate(Program& program,
@@ -226,6 +292,7 @@ bool CodeGen::generate(Program& program,
             }
             ClassInfo info;
             info.structType = llvm::StructType::create(*context_, cls->name);
+            info.isShared = cls->isShared;
             classInfos_[cls->name] = info;
         } else if (auto* enm = dynamic_cast<EnumDecl*>(decl.get())) {
             EnumInfo info;
@@ -251,6 +318,14 @@ bool CodeGen::generate(Program& program,
             if (!cls->typeParams.empty()) continue; // skip generic templates
             auto& info = classInfos_[cls->name];
             std::vector<llvm::Type*> fieldTypes;
+
+            // Shared classes get a mutex as the first field (64 bytes for pthread_mutex_t)
+            if (cls->isShared) {
+                auto* i8Ty = llvm::Type::getInt8Ty(*context_);
+                auto* mutexTy = llvm::ArrayType::get(i8Ty, 64);
+                fieldTypes.push_back(mutexTy);
+                // Mutex occupies field index 0; user fields start at index 1
+            }
 
             // Include parent class fields first
             if (!cls->baseClass.empty()) {
@@ -294,8 +369,13 @@ bool CodeGen::generate(Program& program,
                 retType = llvm::Type::getInt32Ty(*context_);
             }
 
+            // Async functions return a Future* (i8 pointer)
+            if (func->isAsync) {
+                retType = llvm::PointerType::getUnqual(*context_);
+            }
+
             // Functions returning Array<T> return the struct by value
-            if (func->returnType) {
+            if (!func->isAsync && func->returnType) {
                 auto* named = dynamic_cast<NamedType*>(func->returnType.get());
                 if (named && named->name == "Array") {
                     retType = arrayStructType_;
@@ -403,6 +483,113 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
     llvm::Function* llvmFunc = module_->getFunction(func.name);
     if (!llvmFunc) return;
 
+    if (func.isAsync) {
+        // --- Async function: create a thunk and spawn it ---
+        auto* i8PtrTy = llvm::PointerType::getUnqual(*context_);
+        auto* i64Ty = llvm::Type::getInt64Ty(*context_);
+        auto* i32Ty = llvm::Type::getInt32Ty(*context_);
+
+        // 1. Create the thunk function: __async_<name>(void* args) -> i64
+        std::string thunkName = "__async_" + func.name;
+        auto* thunkFnTy = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+        auto* thunkFunc = llvm::Function::Create(thunkFnTy, llvm::Function::InternalLinkage,
+                                                   thunkName, module_.get());
+
+        // 2. Emit the thunk body (contains the actual async function logic)
+        auto* thunkBB = llvm::BasicBlock::Create(*context_, "entry", thunkFunc);
+        builder_->SetInsertPoint(thunkBB);
+
+        auto oldNamedValues = namedValues_;
+        namedValues_.clear();
+
+        // Unpack parameters from the args struct (i64* array)
+        llvm::Value* argsPtr = &*thunkFunc->arg_begin();
+        for (size_t i = 0; i < func.parameters.size(); i++) {
+            auto* paramGEP = builder_->CreateGEP(i64Ty, argsPtr,
+                llvm::ConstantInt::get(i64Ty, i), "arg.ptr." + func.parameters[i].name);
+            auto* rawVal = builder_->CreateLoad(i64Ty, paramGEP, "arg.raw." + func.parameters[i].name);
+
+            // Convert i64 back to the parameter's LLVM type
+            llvm::Type* paramTy = getLLVMType(func.parameters[i].type.get());
+            llvm::Value* paramVal = rawVal;
+            if (paramTy->isPointerTy()) {
+                paramVal = builder_->CreateIntToPtr(rawVal, paramTy, "arg." + func.parameters[i].name);
+            } else if (paramTy->isDoubleTy()) {
+                paramVal = builder_->CreateBitCast(rawVal, paramTy, "arg." + func.parameters[i].name);
+            } else if (paramTy->isIntegerTy() && paramTy->getIntegerBitWidth() < 64) {
+                paramVal = builder_->CreateTrunc(rawVal, paramTy, "arg." + func.parameters[i].name);
+            }
+
+            auto* alloca = createEntryBlockAlloca(thunkFunc, func.parameters[i].name, paramTy);
+            builder_->CreateStore(paramVal, alloca);
+            namedValues_[func.parameters[i].name] = alloca;
+        }
+
+        // Emit function body statements
+        for (auto& stmt : func.body->statements) {
+            emitStmt(*stmt);
+        }
+
+        // Default return if no explicit return
+        auto* curBlock = builder_->GetInsertBlock();
+        if (curBlock && !curBlock->getTerminator()) {
+            builder_->CreateRet(llvm::ConstantInt::get(i64Ty, 0));
+        }
+
+        namedValues_ = oldNamedValues;
+
+        // 3. Emit the public async function that spawns the thunk
+        auto* entryBB = llvm::BasicBlock::Create(*context_, "entry", llvmFunc);
+        builder_->SetInsertPoint(entryBB);
+
+        // Pack arguments into an i64 array on the heap
+        llvm::Value* argsPack = nullptr;
+        if (!func.parameters.empty()) {
+            auto mallocFn = module_->getOrInsertFunction("malloc",
+                llvm::FunctionType::get(i8PtrTy, {i64Ty}, false));
+            auto* allocSize = llvm::ConstantInt::get(i64Ty, func.parameters.size() * 8);
+            auto* rawMem = builder_->CreateCall(mallocFn, {allocSize}, "args.mem");
+            argsPack = rawMem;
+
+            size_t idx = 0;
+            for (auto& arg : llvmFunc->args()) {
+                if (idx >= func.parameters.size()) break;
+                llvm::Value* argVal = &arg;
+                // Convert to i64 for uniform storage
+                llvm::Value* stored;
+                if (argVal->getType()->isPointerTy()) {
+                    stored = builder_->CreatePtrToInt(argVal, i64Ty, "arg.pack");
+                } else if (argVal->getType()->isDoubleTy()) {
+                    stored = builder_->CreateBitCast(argVal, i64Ty, "arg.pack");
+                } else if (argVal->getType()->isIntegerTy() && argVal->getType()->getIntegerBitWidth() < 64) {
+                    stored = builder_->CreateSExt(argVal, i64Ty, "arg.pack");
+                } else {
+                    stored = argVal;
+                }
+                auto* slotPtr = builder_->CreateGEP(i64Ty, argsPack,
+                    llvm::ConstantInt::get(i64Ty, idx), "arg.slot");
+                builder_->CreateStore(stored, slotPtr);
+                idx++;
+            }
+        } else {
+            argsPack = llvm::ConstantPointerNull::get(
+                llvm::PointerType::getUnqual(*context_));
+        }
+
+        // Determine async kind: 0=io, 1=compute
+        int asyncKindVal = (func.asyncKind == AsyncKind::Compute) ? 1 : 0;
+        auto* kindConst = llvm::ConstantInt::get(i32Ty, asyncKindVal);
+
+        // Spawn: chris_async_spawn(thunk_ptr, args_ptr, kind) -> Future*
+        auto* thunkPtr = builder_->CreateBitCast(thunkFunc, i8PtrTy, "thunk.ptr");
+        auto* futurePtr = builder_->CreateCall(runtimeAsyncSpawn_,
+            {thunkPtr, argsPack, kindConst}, "future");
+
+        builder_->CreateRet(futurePtr);
+        return;
+    }
+
+    // --- Regular (non-async) function ---
     auto* bb = llvm::BasicBlock::Create(*context_, "entry", llvmFunc);
     builder_->SetInsertPoint(bb);
 
@@ -550,6 +737,8 @@ void CodeGen::emitStmt(Stmt& stmt) {
         emitTryCatchStmt(*tryCatch);
     } else if (auto* exprStmt = dynamic_cast<ExprStmt*>(&stmt)) {
         emitExprStmt(*exprStmt);
+    } else if (auto* unsafeBlock = dynamic_cast<UnsafeBlock*>(&stmt)) {
+        emitBlock(*unsafeBlock->body);
     } else if (auto* block = dynamic_cast<Block*>(&stmt)) {
         emitBlock(*block);
     }
@@ -923,6 +1112,7 @@ llvm::Value* CodeGen::emitExpr(Expr& expr) {
     if (auto* e = dynamic_cast<ArrayLiteralExpr*>(&expr))           return emitArrayLiteralExpr(*e);
     if (auto* e = dynamic_cast<IndexExpr*>(&expr))                  return emitIndexExpr(*e);
     if (auto* e = dynamic_cast<IfExpr*>(&expr))                     return emitIfExpr(*e);
+    if (auto* e = dynamic_cast<AwaitExpr*>(&expr))                   return emitAwaitExpr(*e);
 
     return nullptr;
 }
@@ -1708,6 +1898,14 @@ llvm::Value* CodeGen::emitConstructExpr(ConstructExpr& expr) {
     auto* rawPtr = builder_->CreateCall(
         llvm::cast<llvm::Function>(mallocFn), {sizeVal}, "obj");
 
+    // Initialize mutex for shared classes
+    if (info.isShared) {
+        auto* mutexPtr = builder_->CreateStructGEP(structTy, rawPtr, 0, "mutex.ptr");
+        auto* mutexI8Ptr = builder_->CreateBitCast(mutexPtr,
+            llvm::PointerType::getUnqual(*context_), "mutex.i8ptr");
+        builder_->CreateCall(runtimeMutexInit_, {mutexI8Ptr});
+    }
+
     // Initialize fields
     for (auto& [fieldName, fieldValue] : expr.fieldInits) {
         int idx = getFieldIndex(expr.className, fieldName);
@@ -1772,9 +1970,21 @@ llvm::Value* CodeGen::emitMemberExpr(MemberExpr& expr) {
         int idx = getFieldIndex(currentClassName_, expr.member);
         if (idx >= 0) {
             auto& info = classInfos_[currentClassName_];
+            // Shared class: lock before read, unlock after
+            if (info.isShared) {
+                auto* mutexPtr = builder_->CreateStructGEP(info.structType, objPtr, 0, "mutex.ptr");
+                auto* mutexI8 = builder_->CreateBitCast(mutexPtr, llvm::PointerType::getUnqual(*context_));
+                builder_->CreateCall(runtimeMutexLock_, {mutexI8});
+            }
             auto* fieldPtr = builder_->CreateStructGEP(info.structType, objPtr, idx, expr.member + ".ptr");
             auto* fieldTy = info.structType->getElementType(idx);
-            return builder_->CreateLoad(fieldTy, fieldPtr, expr.member);
+            auto* val = builder_->CreateLoad(fieldTy, fieldPtr, expr.member);
+            if (info.isShared) {
+                auto* mutexPtr = builder_->CreateStructGEP(info.structType, objPtr, 0, "mutex.ptr2");
+                auto* mutexI8 = builder_->CreateBitCast(mutexPtr, llvm::PointerType::getUnqual(*context_));
+                builder_->CreateCall(runtimeMutexUnlock_, {mutexI8});
+            }
+            return val;
         }
     }
 
@@ -1782,9 +1992,20 @@ llvm::Value* CodeGen::emitMemberExpr(MemberExpr& expr) {
     for (auto& [className, info] : classInfos_) {
         int idx = getFieldIndex(className, expr.member);
         if (idx >= 0) {
+            if (info.isShared) {
+                auto* mutexPtr = builder_->CreateStructGEP(info.structType, objPtr, 0, "mutex.ptr");
+                auto* mutexI8 = builder_->CreateBitCast(mutexPtr, llvm::PointerType::getUnqual(*context_));
+                builder_->CreateCall(runtimeMutexLock_, {mutexI8});
+            }
             auto* fieldPtr = builder_->CreateStructGEP(info.structType, objPtr, idx, expr.member + ".ptr");
             auto* fieldTy = info.structType->getElementType(idx);
-            return builder_->CreateLoad(fieldTy, fieldPtr, expr.member);
+            auto* val = builder_->CreateLoad(fieldTy, fieldPtr, expr.member);
+            if (info.isShared) {
+                auto* mutexPtr = builder_->CreateStructGEP(info.structType, objPtr, 0, "mutex.ptr2");
+                auto* mutexI8 = builder_->CreateBitCast(mutexPtr, llvm::PointerType::getUnqual(*context_));
+                builder_->CreateCall(runtimeMutexUnlock_, {mutexI8});
+            }
+            return val;
         }
     }
 
@@ -1798,8 +2019,18 @@ llvm::Value* CodeGen::emitMemberStore(MemberExpr& member, llvm::Value* value) {
     for (auto& [className, info] : classInfos_) {
         int idx = getFieldIndex(className, member.member);
         if (idx >= 0) {
+            if (info.isShared) {
+                auto* mutexPtr = builder_->CreateStructGEP(info.structType, objPtr, 0, "mutex.ptr");
+                auto* mutexI8 = builder_->CreateBitCast(mutexPtr, llvm::PointerType::getUnqual(*context_));
+                builder_->CreateCall(runtimeMutexLock_, {mutexI8});
+            }
             auto* fieldPtr = builder_->CreateStructGEP(info.structType, objPtr, idx, member.member + ".ptr");
             builder_->CreateStore(value, fieldPtr);
+            if (info.isShared) {
+                auto* mutexPtr = builder_->CreateStructGEP(info.structType, objPtr, 0, "mutex.ptr2");
+                auto* mutexI8 = builder_->CreateBitCast(mutexPtr, llvm::PointerType::getUnqual(*context_));
+                builder_->CreateCall(runtimeMutexUnlock_, {mutexI8});
+            }
             return value;
         }
     }
@@ -1811,8 +2042,10 @@ int CodeGen::getFieldIndex(const std::string& className, const std::string& fiel
     auto it = classInfos_.find(className);
     if (it == classInfos_.end()) return -1;
     auto& names = it->second.fieldNames;
+    // Shared classes have a mutex at struct index 0, so user fields start at index 1
+    int offset = it->second.isShared ? 1 : 0;
     for (size_t i = 0; i < names.size(); i++) {
-        if (names[i] == fieldName) return static_cast<int>(i);
+        if (names[i] == fieldName) return static_cast<int>(i) + offset;
     }
     return -1;
 }
@@ -2678,6 +2911,16 @@ void CodeGen::emitGenericClassInstance(ClassDecl& templateDecl,
     }
 }
 
+llvm::Value* CodeGen::emitAwaitExpr(AwaitExpr& expr) {
+    // Emit the operand — should be a Future* (i8*)
+    llvm::Value* futurePtr = emitExpr(*expr.operand);
+    if (!futurePtr) return nullptr;
+
+    // Call chris_async_await(future_ptr) -> i64
+    auto* result = builder_->CreateCall(runtimeAsyncAwait_, {futurePtr}, "await.result");
+    return result;
+}
+
 std::string CodeGen::getIR() const {
     std::string ir;
     llvm::raw_string_ostream stream(ir);
@@ -2732,7 +2975,7 @@ bool CodeGen::emitObjectFile(const std::string& outputPath) {
 
 bool CodeGen::linkExecutable(const std::string& objectPath, const std::string& runtimePath,
                               const std::string& outputPath) {
-    std::string cmd = "cc " + objectPath + " " + runtimePath + " -o " + outputPath;
+    std::string cmd = "cc " + objectPath + " " + runtimePath + " -lpthread -o " + outputPath;
     int result = std::system(cmd.c_str());
     if (result != 0) {
         diagnostics_.error("E4005", "Linking failed",

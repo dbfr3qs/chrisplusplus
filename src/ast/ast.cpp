@@ -264,8 +264,26 @@ std::string TryCatchStmt::toString(int indent) const {
     return result;
 }
 
+std::string UnsafeBlock::toString(int indent) const {
+    std::string result = indentStr(indent) + "(Unsafe\n";
+    result += body->toString(indent + 1) + ")";
+    return result;
+}
+
+std::string AwaitExpr::toString(int indent) const {
+    std::string result = indentStr(indent) + "(Await\n";
+    result += operand->toString(indent + 1) + ")";
+    return result;
+}
+
 std::string FuncDecl::toString(int indent) const {
-    std::string result = indentStr(indent) + "(FuncDecl " + name;
+    std::string result = indentStr(indent) + "(FuncDecl ";
+    if (isAsync) {
+        result += "async ";
+        if (asyncKind == AsyncKind::Io) result += "io ";
+        else if (asyncKind == AsyncKind::Compute) result += "compute ";
+    }
+    result += name;
     result += "\n" + indentStr(indent + 1) + "(Params";
     for (const auto& p : parameters) {
         result += "\n" + indentStr(indent + 2) + "(Param " + p.name;
@@ -306,7 +324,7 @@ std::string ImportDecl::toString(int indent) const {
 }
 
 std::string ClassDecl::toString(int indent) const {
-    std::string result = indentStr(indent) + "(ClassDecl " + (isPublic ? "public " : "") + name;
+    std::string result = indentStr(indent) + "(ClassDecl " + (isPublic ? "public " : "") + (isShared ? "shared " : "") + name;
     if (!typeParams.empty()) {
         result += "<";
         for (size_t i = 0; i < typeParams.size(); i++) {

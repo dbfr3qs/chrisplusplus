@@ -1,0 +1,44 @@
+// Async/Await Example
+// Demonstrates async functions, await expressions, and io/compute annotations
+
+// An async function that simulates fetching data (io-bound)
+async func fetchUser(id: Int) -> io Int {
+    // In a real app, this would do network I/O
+    return id * 10;
+}
+
+// An async function for CPU-bound work (compute)
+async func fibonacci(n: Int) -> compute Int {
+    if n <= 1 {
+        return n;
+    }
+    // Recursive computation
+    var a = 0;
+    var b = 1;
+    for i in 2..n {
+        var temp = a + b;
+        a = b;
+        b = temp;
+    }
+    return b;
+}
+
+// A simple async function with no annotation
+async func addAsync(a: Int, b: Int) -> Int {
+    return a + b;
+}
+
+// Main function uses await to get results from async functions
+async func main() {
+    // Spawn async tasks
+    let user = await fetchUser(42);
+    print(user);
+
+    // Compute fibonacci asynchronously
+    let fib = await fibonacci(10);
+    print(fib);
+
+    // Multiple awaits
+    let sum = await addAsync(3, 4);
+    print(sum);
+}

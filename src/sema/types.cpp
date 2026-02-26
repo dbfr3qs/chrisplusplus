@@ -108,6 +108,10 @@ TypePtr makeArrayType(TypePtr elementType) {
     return std::make_shared<ArrayType>(std::move(elementType));
 }
 
+TypePtr makeFutureType(TypePtr innerType) {
+    return std::make_shared<FutureType>(std::move(innerType));
+}
+
 TypePtr substituteTypeParams(
     const TypePtr& type,
     const std::vector<std::string>& paramNames,

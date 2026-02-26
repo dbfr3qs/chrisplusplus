@@ -1,0 +1,22 @@
+// Math tests for chris test command
+
+func test_addition() {
+    let result = 2 + 3;
+    if result != 5 {
+        throw "expected 5";
+    }
+}
+
+func test_subtraction() {
+    let result = 10 - 4;
+    if result != 6 {
+        throw "expected 6";
+    }
+}
+
+func test_multiplication() {
+    let result = 3 * 7;
+    if result != 21 {
+        throw "expected 21";
+    }
+}

@@ -280,6 +280,12 @@ struct TryCatchStmt : Stmt {
     std::string toString(int indent = 0) const override;
 };
 
+// Unsafe block: unsafe { ... }
+struct UnsafeBlock : Stmt {
+    std::unique_ptr<Block> body;
+    std::string toString(int indent = 0) const override;
+};
+
 // --- Top-level Declarations ---
 
 struct Parameter {
@@ -288,10 +294,15 @@ struct Parameter {
     SourceLocation location;
 };
 
+// Async function kind: io or compute
+enum class AsyncKind { None, Io, Compute };
+
 struct FuncDecl : Stmt {
     std::string name;
     AccessModifier access = AccessModifier::Private; // default is private
     bool isOperator = false; // true for operator overloads (e.g. operator+)
+    bool isAsync = false; // true for async functions
+    AsyncKind asyncKind = AsyncKind::None; // io or compute annotation
     std::vector<Parameter> parameters;
     TypeExprPtr returnType; // optional (Void if absent)
     std::unique_ptr<Block> body;
@@ -314,6 +325,7 @@ struct ImportDecl : Stmt {
 struct ClassDecl : Stmt {
     std::string name;
     bool isPublic = false;
+    bool isShared = false; // true for shared classes (thread-safe synchronized access)
     std::vector<std::string> typeParams; // generic type parameters, e.g. <T, U>
     std::string baseClass;  // empty if no inheritance
     std::vector<std::string> interfaces; // implemented interfaces
@@ -338,6 +350,12 @@ struct EnumDecl : Stmt {
     std::string name;
     std::vector<std::string> cases; // simple enum variant names (backward compat)
     std::vector<EnumVariant> variants; // extended variants with optional associated types
+    std::string toString(int indent = 0) const override;
+};
+
+// Await expression: await expr
+struct AwaitExpr : Expr {
+    ExprPtr operand;
     std::string toString(int indent = 0) const override;
 };
 

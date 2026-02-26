@@ -1,0 +1,28 @@
+// Channel Example
+// Demonstrates message-passing concurrency with channels
+// Note: Channel<T> is available as a runtime primitive via extern functions
+
+// Extern channel runtime functions
+extern func chris_channel_create(capacity: Int) -> Int;
+extern func chris_channel_send(ch: Int, value: Int) -> Int;
+extern func chris_channel_recv(ch: Int, out: Int) -> Int;
+extern func chris_channel_close(ch: Int);
+extern func chris_channel_destroy(ch: Int);
+
+func main() {
+    // Create a channel with buffer size 10
+    let ch = chris_channel_create(10);
+
+    // Send some values
+    chris_channel_send(ch, 42);
+    chris_channel_send(ch, 100);
+    chris_channel_send(ch, 7);
+
+    // Close the channel (no more sends)
+    chris_channel_close(ch);
+
+    // Destroy when done
+    chris_channel_destroy(ch);
+
+    print("Channel operations complete");
+}

@@ -1,0 +1,27 @@
+import std.io;
+
+func add(a: Int, b: Int) -> Int {
+    return a + b;
+}
+
+class Point {
+    public var x: Int;
+    public var y: Int;
+
+    public func toString() -> String {
+        return "Point";
+    }
+}
+
+func main() {
+    var x = add(1, 2);
+    if x > 0 {
+        print(x);
+    } else {
+        print(0);
+    }
+    for i in 0..10 {
+        print(i);
+    }
+    let p = Point { x: 1, y: 2 };
+}
