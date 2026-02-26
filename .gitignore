@@ -1,7 +1,7 @@
 # Build directory
 build/
 
-# Compiled binaries (examples)
+# Compiled binaries (examples) — match files without extensions
 examples/adt
 examples/arraymethods
 examples/arrays
@@ -15,6 +15,7 @@ examples/fibonacci
 examples/generics
 examples/hello
 examples/higherorder
+examples/http
 examples/imports
 examples/inheritance
 examples/interfaces

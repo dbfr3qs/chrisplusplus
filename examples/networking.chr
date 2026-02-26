@@ -1,0 +1,19 @@
+// Networking example: DNS lookup and TCP client
+
+func main() -> Int {
+    // DNS resolution
+    var ip = dnsLookup("localhost");
+    print(ip);
+
+    // TCP echo example (connect to a local server)
+    // Uncomment below if you have a TCP server running on port 8080:
+    // var fd = tcpConnect("127.0.0.1", 8080);
+    // if fd >= 0 {
+    //     tcpSend(fd, "Hello from chris++!");
+    //     var response = tcpRecv(fd, 1024);
+    //     print(response);
+    //     tcpClose(fd);
+    // }
+
+    return 0;
+}

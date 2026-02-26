@@ -1,0 +1,25 @@
+// File I/O example
+
+func main() -> Int {
+    // Write a file
+    let ok = writeFile("/tmp/chris_test.txt", "Hello from Chris++!");
+    print(ok);
+
+    // Check it exists
+    print(fileExists("/tmp/chris_test.txt"));
+    print(fileExists("/tmp/nonexistent.txt"));
+
+    // Read it back
+    let content = readFile("/tmp/chris_test.txt");
+    print(content);
+
+    // Append to it
+    appendFile("/tmp/chris_test.txt", " More text.");
+    let updated = readFile("/tmp/chris_test.txt");
+    print(updated);
+
+    // Print length
+    print(updated.length);
+
+    return 0;
+}

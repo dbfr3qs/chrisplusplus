@@ -1,0 +1,14 @@
+// Test assertions example
+
+func main() -> Int {
+    assertEqual(42, 42, "42 should equal 42");
+    assertEqual(1 + 1, 2, "1+1 should be 2");
+    assertTrue(10 > 5, "10 > 5");
+    assertFalse(3 > 10, "3 is not > 10");
+    assert(1 == 1, "1 equals 1");
+
+    // This one should fail
+    assertEqual(1, 2, "this should fail");
+
+    return 0;
+}

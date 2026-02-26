@@ -286,6 +286,14 @@ struct UnsafeBlock : Stmt {
     std::string toString(int indent = 0) const override;
 };
 
+// --- Annotations ---
+
+struct Annotation {
+    std::string name;           // e.g. "Deprecated", "Serializable", "CLayout"
+    std::vector<std::string> arguments; // e.g. ["Use newMethod instead"]
+    SourceLocation location;
+};
+
 // --- Top-level Declarations ---
 
 struct Parameter {
@@ -299,6 +307,7 @@ enum class AsyncKind { None, Io, Compute };
 
 struct FuncDecl : Stmt {
     std::string name;
+    std::vector<Annotation> annotations;
     AccessModifier access = AccessModifier::Private; // default is private
     bool isOperator = false; // true for operator overloads (e.g. operator+)
     bool isAsync = false; // true for async functions
@@ -324,6 +333,7 @@ struct ImportDecl : Stmt {
 
 struct ClassDecl : Stmt {
     std::string name;
+    std::vector<Annotation> annotations;
     bool isPublic = false;
     bool isShared = false; // true for shared classes (thread-safe synchronized access)
     std::vector<std::string> typeParams; // generic type parameters, e.g. <T, U>
@@ -336,6 +346,7 @@ struct ClassDecl : Stmt {
 
 struct InterfaceDecl : Stmt {
     std::string name;
+    std::vector<Annotation> annotations;
     std::vector<std::unique_ptr<FuncDecl>> methods; // method signatures (no body)
     std::string toString(int indent = 0) const override;
 };
@@ -348,6 +359,7 @@ struct EnumVariant {
 
 struct EnumDecl : Stmt {
     std::string name;
+    std::vector<Annotation> annotations;
     std::vector<std::string> cases; // simple enum variant names (backward compat)
     std::vector<EnumVariant> variants; // extended variants with optional associated types
     std::string toString(int indent = 0) const override;

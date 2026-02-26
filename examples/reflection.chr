@@ -1,0 +1,22 @@
+// Annotations & Reflection example
+
+@Deprecated("Use UserV2 instead")
+func oldGreet() -> String {
+    return "Hello from old!";
+}
+
+@Serializable
+class User {
+    public var name: String;
+    public var age: Int;
+}
+
+func main() -> Int {
+    var u = User { name: "Alice", age: 30 };
+
+    // Reflection: typeof()
+    var t = typeof(u);
+    print(t.name);
+
+    return 0;
+}

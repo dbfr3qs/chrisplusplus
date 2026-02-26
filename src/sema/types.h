@@ -30,6 +30,9 @@ enum class TypeKind {
     TypeParameter, // generic type parameter (e.g. T)
     Array,
     Future,
+    Map,
+    Set,
+    TypeInfo,
     Unknown
 };
 
@@ -157,6 +160,38 @@ struct FutureType : Type {
     }
 };
 
+struct MapType : Type {
+    TypePtr keyType;
+    TypePtr valueType;
+    MapType(TypePtr key, TypePtr val) : keyType(std::move(key)), valueType(std::move(val)) {}
+    TypeKind kind() const override { return TypeKind::Map; }
+    std::string toString() const override { return "Map<" + keyType->toString() + ", " + valueType->toString() + ">"; }
+    bool equals(const Type& other) const override {
+        if (other.kind() != TypeKind::Map) return false;
+        auto& otherMap = static_cast<const MapType&>(other);
+        return keyType->equals(*otherMap.keyType) && valueType->equals(*otherMap.valueType);
+    }
+};
+
+struct SetType : Type {
+    TypePtr elementType;
+    SetType(TypePtr elem) : elementType(std::move(elem)) {}
+    TypeKind kind() const override { return TypeKind::Set; }
+    std::string toString() const override { return "Set<" + elementType->toString() + ">"; }
+    bool equals(const Type& other) const override {
+        if (other.kind() != TypeKind::Set) return false;
+        return elementType->equals(*static_cast<const SetType&>(other).elementType);
+    }
+};
+
+struct TypeInfoType : Type {
+    TypeKind kind() const override { return TypeKind::TypeInfo; }
+    std::string toString() const override { return "TypeInfo"; }
+    bool equals(const Type& other) const override {
+        return other.kind() == TypeKind::TypeInfo;
+    }
+};
+
 struct TypeParameterType : Type {
     std::string name; // e.g. "T"
     TypeKind kind() const override { return TypeKind::TypeParameter; }
@@ -224,6 +259,9 @@ TypePtr makeClassType(const std::string& name);
 TypePtr makeTypeParameter(const std::string& name);
 TypePtr makeArrayType(TypePtr elementType);
 TypePtr makeFutureType(TypePtr innerType);
+TypePtr makeMapType(TypePtr keyType, TypePtr valueType);
+TypePtr makeSetType(TypePtr elementType);
+TypePtr typeInfoType();
 
 // Substitute type parameters with concrete types in a given type
 TypePtr substituteTypeParams(

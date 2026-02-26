@@ -95,6 +95,8 @@ if(BUILD_TESTS)
         tests/shared/test_shared.cpp
         tests/unsafe/test_unsafe.cpp
         tests/fmt/test_formatter.cpp
+        tests/annotations/test_annotations.cpp
+        tests/stdlib/test_stdlib.cpp
     )
     target_link_libraries(chris_tests chris_lib GTest::gtest GTest::gtest_main)
     target_include_directories(chris_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

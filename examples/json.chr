@@ -1,0 +1,25 @@
+// JSON parsing and serialization example
+
+func main() -> Int {
+    var data = jsonParse("{\"name\": \"Alice\", \"age\": 30, \"active\": true}");
+
+    var name = jsonGet(data, "name");
+    var age = jsonGetInt(data, "age");
+
+    print(name);
+    print(age);
+
+    // Round-trip: stringify back
+    var json = jsonStringify(data);
+    print(json);
+
+    // Nested objects
+    var nested = jsonParse("{\"user\": {\"id\": 42, \"email\": \"alice@example.com\"}}");
+    var user = jsonGetObject(nested, "user");
+    var email = jsonGet(user, "email");
+    var id = jsonGetInt(user, "id");
+    print(email);
+    print(id);
+
+    return 0;
+}

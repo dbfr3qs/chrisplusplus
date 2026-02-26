@@ -112,6 +112,18 @@ TypePtr makeFutureType(TypePtr innerType) {
     return std::make_shared<FutureType>(std::move(innerType));
 }
 
+TypePtr makeMapType(TypePtr keyType, TypePtr valueType) {
+    return std::make_shared<MapType>(std::move(keyType), std::move(valueType));
+}
+
+TypePtr makeSetType(TypePtr elementType) {
+    return std::make_shared<SetType>(std::move(elementType));
+}
+
+TypePtr typeInfoType() {
+    return std::make_shared<TypeInfoType>();
+}
+
 TypePtr substituteTypeParams(
     const TypePtr& type,
     const std::vector<std::string>& paramNames,

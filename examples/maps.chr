@@ -1,0 +1,18 @@
+// Map example — hash map with string keys
+
+func main() -> Int {
+    var m = Map();
+    m.set("hello", 1);
+    m.set("world", 2);
+    m.set("foo", 42);
+
+    print(m.size);
+    print(m.get("foo"));
+    print(m.has("hello"));
+    print(m.has("missing"));
+
+    m.delete("world");
+    print(m.size);
+
+    return 0;
+}

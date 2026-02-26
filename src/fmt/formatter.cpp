@@ -13,6 +13,23 @@ std::string Formatter::formatTypeExpr(const TypeExpr& type) {
     return type.toString();
 }
 
+std::string Formatter::formatAnnotations(const std::vector<Annotation>& annotations, int indent) {
+    std::string result;
+    for (auto& ann : annotations) {
+        result += ind(indent) + "@" + ann.name;
+        if (!ann.arguments.empty()) {
+            result += "(";
+            for (size_t i = 0; i < ann.arguments.size(); i++) {
+                if (i > 0) result += ", ";
+                result += "\"" + ann.arguments[i] + "\"";
+            }
+            result += ")";
+        }
+        result += "\n";
+    }
+    return result;
+}
+
 std::string Formatter::formatParams(const std::vector<Parameter>& params) {
     std::string result;
     for (size_t i = 0; i < params.size(); i++) {
@@ -116,7 +133,8 @@ std::string Formatter::formatBlock(const Block& block, int indent) {
 // --- Declarations ---
 
 std::string Formatter::formatFuncDecl(const FuncDecl& func, int indent) {
-    std::string result = ind(indent);
+    std::string result = formatAnnotations(func.annotations, indent);
+    result += ind(indent);
 
     // Access modifier (only emit for class methods at indent > 0)
     if (indent > 0) {
@@ -193,7 +211,8 @@ std::string Formatter::formatVarDecl(const VarDecl& decl, int indent) {
 }
 
 std::string Formatter::formatClassDecl(const ClassDecl& decl, int indent) {
-    std::string result = ind(indent);
+    std::string result = formatAnnotations(decl.annotations, indent);
+    result += ind(indent);
     if (decl.isPublic) result += "public ";
     if (decl.isShared) result += "shared ";
     result += "class " + decl.name;
@@ -239,7 +258,8 @@ std::string Formatter::formatClassDecl(const ClassDecl& decl, int indent) {
 }
 
 std::string Formatter::formatInterfaceDecl(const InterfaceDecl& decl, int indent) {
-    std::string result = ind(indent) + "interface " + decl.name + " {\n";
+    std::string result = formatAnnotations(decl.annotations, indent);
+    result += ind(indent) + "interface " + decl.name + " {\n";
     for (auto& method : decl.methods) {
         result += ind(indent + 1) + "func " + method->name + "(";
         result += formatParams(method->parameters) + ")";
@@ -253,7 +273,8 @@ std::string Formatter::formatInterfaceDecl(const InterfaceDecl& decl, int indent
 }
 
 std::string Formatter::formatEnumDecl(const EnumDecl& decl, int indent) {
-    std::string result = ind(indent) + "enum " + decl.name + " {\n";
+    std::string result = formatAnnotations(decl.annotations, indent);
+    result += ind(indent) + "enum " + decl.name + " {\n";
     // Prefer variants if available
     if (!decl.variants.empty()) {
         for (auto& variant : decl.variants) {

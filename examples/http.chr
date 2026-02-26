@@ -1,0 +1,27 @@
+// HTTP client and server example
+
+func main() -> Int {
+    // HTTP Client: GET request
+    // var body = httpGet("http://httpbin.org/get");
+    // print(body);
+
+    // HTTP Client: POST request
+    // var response = httpPost("http://httpbin.org/post", "{\"key\":\"value\"}", "application/json");
+    // print(response);
+
+    // HTTP Server example (serves one request then exits)
+    var server = httpServerCreate(8080);
+    print("Server listening on port 8080...");
+
+    var req = httpServerAccept(server);
+    var method = httpRequestMethod(req);
+    var path = httpRequestPath(req);
+    print(method);
+    print(path);
+
+    httpRespond(req, 200, "Hello from chris++!");
+    httpServerClose(server);
+    print("Server closed.");
+
+    return 0;
+}

@@ -169,9 +169,54 @@ void TypeChecker::check(Program& program) {
     }
 }
 
+// --- Annotations ---
+
+void TypeChecker::validateAnnotations(const std::vector<Annotation>& annotations, const std::string& declKind, const SourceLocation& loc) {
+    static const std::unordered_map<std::string, std::vector<std::string>> knownAnnotations = {
+        {"Deprecated", {"func", "class", "interface", "enum"}},
+        {"Serializable", {"class"}},
+        {"CLayout", {"class"}},
+        {"Test", {"func"}},
+        {"Inline", {"func"}},
+        {"NoReturn", {"func"}},
+    };
+
+    for (auto& ann : annotations) {
+        auto it = knownAnnotations.find(ann.name);
+        if (it == knownAnnotations.end()) {
+            diagnostics_.warning("W3040",
+                "Unknown annotation '@" + ann.name + "'",
+                ann.location);
+            continue;
+        }
+        // Check if the annotation is valid for this declaration kind
+        auto& validKinds = it->second;
+        bool valid = false;
+        for (auto& k : validKinds) {
+            if (k == declKind) { valid = true; break; }
+        }
+        if (!valid) {
+            diagnostics_.error("E3040",
+                "Annotation '@" + ann.name + "' cannot be applied to " + declKind + " declarations",
+                ann.location);
+        }
+    }
+}
+
 // --- Declarations ---
 
 void TypeChecker::checkFuncDecl(FuncDecl& func) {
+    // Validate annotations
+    validateAnnotations(func.annotations, "func", func.location);
+
+    // Track @Deprecated functions
+    for (auto& ann : func.annotations) {
+        if (ann.name == "Deprecated") {
+            std::string msg = ann.arguments.empty() ? "" : ann.arguments[0];
+            deprecatedFunctions_[func.name] = msg;
+        }
+    }
+
     symbols_.pushScope();
 
     // Register parameters
@@ -264,15 +309,19 @@ void TypeChecker::checkImportDecl(ImportDecl& /*decl*/) {
     // Import resolution is not implemented yet — just accept it
 }
 
-void TypeChecker::checkInterfaceDecl(InterfaceDecl& /*decl*/) {
+void TypeChecker::checkInterfaceDecl(InterfaceDecl& decl) {
+    validateAnnotations(decl.annotations, "interface", decl.location);
     // Interface methods are already registered in pass 1 — nothing more to check
 }
 
-void TypeChecker::checkEnumDecl(EnumDecl& /*decl*/) {
+void TypeChecker::checkEnumDecl(EnumDecl& decl) {
+    validateAnnotations(decl.annotations, "enum", decl.location);
     // Enum cases are already registered in pass 0 — nothing more to check
 }
 
 void TypeChecker::checkClassDecl(ClassDecl& decl) {
+    validateAnnotations(decl.annotations, "class", decl.location);
+
     auto it = classTypes_.find(decl.name);
     if (it == classTypes_.end()) return;
 
@@ -525,6 +574,143 @@ TypePtr TypeChecker::checkNilLiteral(NilLiteralExpr& /*expr*/) {
 }
 
 TypePtr TypeChecker::checkIdentifier(IdentifierExpr& expr) {
+    // Built-in Map constructor: Map() creates a Map<String, Int> by default
+    if (expr.name == "Map") {
+        return makeFunctionType({}, makeMapType(stringType(), intType()));
+    }
+
+    // Built-in Set constructor: Set() creates a Set<String> by default
+    if (expr.name == "Set") {
+        return makeFunctionType({}, makeSetType(stringType()));
+    }
+
+    // Built-in typeof() for reflection
+    if (expr.name == "typeof") {
+        // typeof accepts any argument and returns TypeInfo
+        // We use a function type that accepts any single argument
+        return makeFunctionType({unknownType()}, typeInfoType());
+    }
+
+    // Built-in process execution functions
+    if (expr.name == "exec") {
+        return makeFunctionType({stringType()}, intType());
+    }
+    if (expr.name == "execOutput") {
+        return makeFunctionType({stringType()}, stringType());
+    }
+
+    // Built-in File I/O functions
+    if (expr.name == "readFile") {
+        return makeFunctionType({stringType()}, stringType());
+    }
+    if (expr.name == "writeFile") {
+        return makeFunctionType({stringType(), stringType()}, boolType());
+    }
+    if (expr.name == "appendFile") {
+        return makeFunctionType({stringType(), stringType()}, boolType());
+    }
+    if (expr.name == "fileExists") {
+        return makeFunctionType({stringType()}, boolType());
+    }
+
+    // Built-in math functions (Int)
+    if (expr.name == "abs") return makeFunctionType({intType()}, intType());
+    if (expr.name == "min") return makeFunctionType({intType(), intType()}, intType());
+    if (expr.name == "max") return makeFunctionType({intType(), intType()}, intType());
+    if (expr.name == "random") return makeFunctionType({intType(), intType()}, intType());
+
+    // Built-in math functions (Float)
+    if (expr.name == "sqrt") return makeFunctionType({floatType()}, floatType());
+    if (expr.name == "pow") return makeFunctionType({floatType(), floatType()}, floatType());
+    if (expr.name == "floor") return makeFunctionType({floatType()}, floatType());
+    if (expr.name == "ceil") return makeFunctionType({floatType()}, floatType());
+    if (expr.name == "round") return makeFunctionType({floatType()}, floatType());
+    if (expr.name == "log") return makeFunctionType({floatType()}, floatType());
+    if (expr.name == "sin") return makeFunctionType({floatType()}, floatType());
+    if (expr.name == "cos") return makeFunctionType({floatType()}, floatType());
+    if (expr.name == "tan") return makeFunctionType({floatType()}, floatType());
+    if (expr.name == "fabs") return makeFunctionType({floatType()}, floatType());
+    if (expr.name == "fmin") return makeFunctionType({floatType(), floatType()}, floatType());
+    if (expr.name == "fmax") return makeFunctionType({floatType(), floatType()}, floatType());
+
+    // Built-in stdin
+    if (expr.name == "readLine") return makeFunctionType({}, stringType());
+
+    // Built-in networking functions (TCP)
+    if (expr.name == "tcpConnect") return makeFunctionType({stringType(), intType()}, intType());
+    if (expr.name == "tcpListen") return makeFunctionType({intType()}, intType());
+    if (expr.name == "tcpAccept") return makeFunctionType({intType()}, intType());
+    if (expr.name == "tcpSend") return makeFunctionType({intType(), stringType()}, intType());
+    if (expr.name == "tcpRecv") return makeFunctionType({intType(), intType()}, stringType());
+    if (expr.name == "tcpClose") return makeFunctionType({intType()}, voidType());
+
+    // Built-in networking functions (UDP)
+    if (expr.name == "udpCreate") return makeFunctionType({}, intType());
+    if (expr.name == "udpBind") return makeFunctionType({intType(), intType()}, intType());
+    if (expr.name == "udpSendTo") return makeFunctionType({intType(), stringType(), intType(), stringType()}, intType());
+    if (expr.name == "udpRecvFrom") return makeFunctionType({intType(), intType()}, stringType());
+    if (expr.name == "udpClose") return makeFunctionType({intType()}, voidType());
+
+    // Built-in DNS
+    if (expr.name == "dnsLookup") return makeFunctionType({stringType()}, stringType());
+
+    // Built-in ConcurrentMap functions
+    if (expr.name == "ConcurrentMap") return makeFunctionType({}, intType()); // returns opaque handle
+    if (expr.name == "cmapSet") return makeFunctionType({intType(), stringType(), intType()}, voidType());
+    if (expr.name == "cmapGet") return makeFunctionType({intType(), stringType()}, intType());
+    if (expr.name == "cmapHas") return makeFunctionType({intType(), stringType()}, boolType());
+    if (expr.name == "cmapDelete") return makeFunctionType({intType(), stringType()}, boolType());
+    if (expr.name == "cmapSize") return makeFunctionType({intType()}, intType());
+    if (expr.name == "cmapDestroy") return makeFunctionType({intType()}, voidType());
+
+    // Built-in ConcurrentQueue functions
+    if (expr.name == "ConcurrentQueue") return makeFunctionType({}, intType()); // returns opaque handle
+    if (expr.name == "cqueueEnqueue") return makeFunctionType({intType(), intType()}, voidType());
+    if (expr.name == "cqueueDequeue") return makeFunctionType({intType()}, intType());
+    if (expr.name == "cqueueSize") return makeFunctionType({intType()}, intType());
+    if (expr.name == "cqueueIsEmpty") return makeFunctionType({intType()}, boolType());
+    if (expr.name == "cqueueDestroy") return makeFunctionType({intType()}, voidType());
+
+    // Built-in Atomic functions
+    if (expr.name == "atomicCreate") return makeFunctionType({intType()}, intType()); // returns opaque handle
+    if (expr.name == "atomicLoad") return makeFunctionType({intType()}, intType());
+    if (expr.name == "atomicStore") return makeFunctionType({intType(), intType()}, voidType());
+    if (expr.name == "atomicAdd") return makeFunctionType({intType(), intType()}, intType());
+    if (expr.name == "atomicSub") return makeFunctionType({intType(), intType()}, intType());
+    if (expr.name == "atomicCompareSwap") return makeFunctionType({intType(), intType(), intType()}, boolType());
+    if (expr.name == "atomicDestroy") return makeFunctionType({intType()}, voidType());
+
+    // Built-in HTTP client functions
+    if (expr.name == "httpGet") return makeFunctionType({stringType()}, stringType());
+    if (expr.name == "httpPost") return makeFunctionType({stringType(), stringType(), stringType()}, stringType());
+
+    // Built-in HTTP server functions
+    if (expr.name == "httpServerCreate") return makeFunctionType({intType()}, intType());
+    if (expr.name == "httpServerAccept") return makeFunctionType({intType()}, intType());
+    if (expr.name == "httpRequestMethod") return makeFunctionType({intType()}, stringType());
+    if (expr.name == "httpRequestPath") return makeFunctionType({intType()}, stringType());
+    if (expr.name == "httpRequestBody") return makeFunctionType({intType()}, stringType());
+    if (expr.name == "httpRespond") return makeFunctionType({intType(), intType(), stringType()}, voidType());
+    if (expr.name == "httpServerClose") return makeFunctionType({intType()}, voidType());
+
+    // Built-in JSON functions
+    if (expr.name == "jsonParse") return makeFunctionType({stringType()}, intType()); // returns opaque handle as Int
+    if (expr.name == "jsonGet") return makeFunctionType({intType(), stringType()}, stringType());
+    if (expr.name == "jsonGetInt") return makeFunctionType({intType(), stringType()}, intType());
+    if (expr.name == "jsonGetBool") return makeFunctionType({intType(), stringType()}, boolType());
+    if (expr.name == "jsonGetFloat") return makeFunctionType({intType(), stringType()}, floatType());
+    if (expr.name == "jsonGetArray") return makeFunctionType({intType(), stringType()}, intType());
+    if (expr.name == "jsonGetObject") return makeFunctionType({intType(), stringType()}, intType());
+    if (expr.name == "jsonArrayLength") return makeFunctionType({intType()}, intType());
+    if (expr.name == "jsonArrayGet") return makeFunctionType({intType(), intType()}, intType());
+    if (expr.name == "jsonStringify") return makeFunctionType({intType()}, stringType());
+
+    // Built-in test assertions
+    if (expr.name == "assert") return makeFunctionType({boolType(), stringType()}, voidType());
+    if (expr.name == "assertEqual") return makeFunctionType({unknownType(), unknownType(), stringType()}, voidType());
+    if (expr.name == "assertTrue") return makeFunctionType({boolType(), stringType()}, voidType());
+    if (expr.name == "assertFalse") return makeFunctionType({boolType(), stringType()}, voidType());
+
     Symbol* sym = symbols_.lookup(expr.name);
     if (!sym) {
         diagnostics_.error("E3009",
@@ -664,6 +850,18 @@ TypePtr TypeChecker::checkUnaryExpr(UnaryExpr& expr) {
 }
 
 TypePtr TypeChecker::checkCallExpr(CallExpr& expr) {
+    // Check for deprecated function calls
+    if (auto* ident = dynamic_cast<IdentifierExpr*>(expr.callee.get())) {
+        auto dit = deprecatedFunctions_.find(ident->name);
+        if (dit != deprecatedFunctions_.end()) {
+            std::string msg = "Function '" + ident->name + "' is deprecated";
+            if (!dit->second.empty()) {
+                msg += ": " + dit->second;
+            }
+            diagnostics_.warning("W3041", msg, expr.location);
+        }
+    }
+
     auto calleeType = checkExpr(*expr.callee);
 
     if (!calleeType || calleeType->kind() == TypeKind::Unknown) {
@@ -765,6 +963,13 @@ TypePtr TypeChecker::checkMemberExpr(MemberExpr& expr) {
         }
     }
 
+    // TypeInfo properties (reflection)
+    if (objType->kind() == TypeKind::TypeInfo) {
+        if (expr.member == "name") return stringType();
+        if (expr.member == "fields") return makeArrayType(stringType());
+        if (expr.member == "implements") return makeArrayType(stringType());
+    }
+
     // Primitive type conversion methods
     if (objType->kind() == TypeKind::Int) {
         if (expr.member == "toString") return makeFunctionType({}, stringType());
@@ -810,6 +1015,29 @@ TypePtr TypeChecker::checkMemberExpr(MemberExpr& expr) {
         if (expr.member == "toLower") return makeFunctionType({}, stringType());
         if (expr.member == "split") return makeFunctionType({stringType()}, makeArrayType(stringType()));
         if (expr.member == "charAt") return makeFunctionType({intType()}, stringType());
+    }
+
+    // Set methods
+    if (objType->kind() == TypeKind::Set) {
+        auto* setType = static_cast<SetType*>(objType.get());
+        auto elemType = setType->elementType;
+        if (expr.member == "add") return makeFunctionType({elemType}, voidType());
+        if (expr.member == "has") return makeFunctionType({elemType}, boolType());
+        if (expr.member == "remove") return makeFunctionType({elemType}, boolType());
+        if (expr.member == "size") return intType();
+        if (expr.member == "values") return makeFunctionType({}, makeArrayType(elemType));
+        if (expr.member == "clear") return makeFunctionType({}, voidType());
+    }
+
+    // Map methods
+    if (objType->kind() == TypeKind::Map) {
+        auto* mapType = static_cast<MapType*>(objType.get());
+        if (expr.member == "set") return makeFunctionType({mapType->keyType, mapType->valueType}, voidType());
+        if (expr.member == "get") return makeFunctionType({mapType->keyType}, mapType->valueType);
+        if (expr.member == "has") return makeFunctionType({mapType->keyType}, boolType());
+        if (expr.member == "delete") return makeFunctionType({mapType->keyType}, boolType());
+        if (expr.member == "size") return intType();
+        if (expr.member == "keys") return makeFunctionType({}, makeArrayType(mapType->keyType));
     }
 
     if (objType->kind() == TypeKind::Class) {
@@ -1025,6 +1253,13 @@ TypePtr TypeChecker::resolveTypeAnnotation(TypeExpr& typeExpr) {
         if (named->name == "Future" && !named->typeArgs.empty()) {
             auto innerType = resolveTypeAnnotation(*named->typeArgs[0]);
             return makeFutureType(innerType);
+        }
+
+        // Built-in Map<K,V> type
+        if (named->name == "Map" && named->typeArgs.size() >= 2) {
+            auto keyType = resolveTypeAnnotation(*named->typeArgs[0]);
+            auto valType = resolveTypeAnnotation(*named->typeArgs[1]);
+            return makeMapType(keyType, valType);
         }
 
         auto type = resolveTypeName(named->name);

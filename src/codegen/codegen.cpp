@@ -253,6 +253,357 @@ void CodeGen::declareRuntimeFunctions() {
     runtimeMutexDestroy_ = llvm::Function::Create(mutexDestroyTy, llvm::Function::ExternalLinkage,
                                                     "chris_mutex_destroy", module_.get());
 
+    // Reflection runtime: TypeInfo struct { ptr name, i64 num_fields, ptr fields, i64 num_implements, ptr implements }
+    typeInfoStructType_ = llvm::StructType::create(*context_, {
+        i8PtrTy,  // name (const char*)
+        i64Ty,    // num_fields
+        i8PtrTy,  // fields (const char**)
+        i64Ty,    // num_implements
+        i8PtrTy   // implements (const char**)
+    }, "ChrisTypeInfo");
+
+    // chris_typeinfo_name(ptr info) -> ptr (string)
+    auto* tiNameTy = llvm::FunctionType::get(i8PtrTy, {i8PtrTy}, false);
+    runtimeTypeInfoName_ = llvm::Function::Create(tiNameTy, llvm::Function::ExternalLinkage,
+                                                    "chris_typeinfo_name", module_.get());
+
+    // chris_typeinfo_fields(ptr info, ptr out_array) -> void
+    auto* tiFieldsTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i8PtrTy}, false);
+    runtimeTypeInfoFields_ = llvm::Function::Create(tiFieldsTy, llvm::Function::ExternalLinkage,
+                                                      "chris_typeinfo_fields", module_.get());
+
+    // chris_typeinfo_implements(ptr info, ptr out_array) -> void
+    auto* tiImplTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i8PtrTy}, false);
+    runtimeTypeInfoImplements_ = llvm::Function::Create(tiImplTy, llvm::Function::ExternalLinkage,
+                                                          "chris_typeinfo_implements", module_.get());
+
+    // Process execution runtime functions
+    // chris_exec(ptr command) -> i64 (exit code)
+    auto* execTy = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimeExec_ = llvm::Function::Create(execTy, llvm::Function::ExternalLinkage,
+                                           "chris_exec", module_.get());
+
+    // chris_exec_output(ptr command) -> ptr (stdout string)
+    auto* execOutputTy = llvm::FunctionType::get(i8PtrTy, {i8PtrTy}, false);
+    runtimeExecOutput_ = llvm::Function::Create(execOutputTy, llvm::Function::ExternalLinkage,
+                                                  "chris_exec_output", module_.get());
+
+    // File I/O runtime functions
+    // chris_read_file(ptr path) -> ptr (string)
+    auto* readFileTy = llvm::FunctionType::get(i8PtrTy, {i8PtrTy}, false);
+    runtimeReadFile_ = llvm::Function::Create(readFileTy, llvm::Function::ExternalLinkage,
+                                               "chris_read_file", module_.get());
+
+    // chris_write_file(ptr path, ptr content) -> i32 (1=ok, 0=fail)
+    auto* writeFileTy = llvm::FunctionType::get(i32Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeWriteFile_ = llvm::Function::Create(writeFileTy, llvm::Function::ExternalLinkage,
+                                                "chris_write_file", module_.get());
+
+    // chris_append_file(ptr path, ptr content) -> i32 (1=ok, 0=fail)
+    auto* appendFileTy = llvm::FunctionType::get(i32Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeAppendFile_ = llvm::Function::Create(appendFileTy, llvm::Function::ExternalLinkage,
+                                                 "chris_append_file", module_.get());
+
+    // chris_file_exists(ptr path) -> i32 (1=exists, 0=not)
+    auto* fileExistsTy = llvm::FunctionType::get(i32Ty, {i8PtrTy}, false);
+    runtimeFileExists_ = llvm::Function::Create(fileExistsTy, llvm::Function::ExternalLinkage,
+                                                  "chris_file_exists", module_.get());
+
+    // Map runtime functions
+    // chris_map_create() -> ptr
+    auto* mapCreateTy = llvm::FunctionType::get(i8PtrTy, {}, false);
+    runtimeMapCreate_ = llvm::Function::Create(mapCreateTy, llvm::Function::ExternalLinkage,
+                                                "chris_map_create", module_.get());
+
+    // chris_map_set(ptr map, ptr key, i64 value) -> void
+    auto* mapSetTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i8PtrTy, i64Ty}, false);
+    runtimeMapSet_ = llvm::Function::Create(mapSetTy, llvm::Function::ExternalLinkage,
+                                             "chris_map_set", module_.get());
+
+    // chris_map_get(ptr map, ptr key) -> i64
+    auto* mapGetTy = llvm::FunctionType::get(i64Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeMapGet_ = llvm::Function::Create(mapGetTy, llvm::Function::ExternalLinkage,
+                                             "chris_map_get", module_.get());
+
+    // chris_map_has(ptr map, ptr key) -> i32
+    auto* mapHasTy = llvm::FunctionType::get(i32Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeMapHas_ = llvm::Function::Create(mapHasTy, llvm::Function::ExternalLinkage,
+                                             "chris_map_has", module_.get());
+
+    // chris_map_delete(ptr map, ptr key) -> i32
+    auto* mapDeleteTy = llvm::FunctionType::get(i32Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeMapDelete_ = llvm::Function::Create(mapDeleteTy, llvm::Function::ExternalLinkage,
+                                                "chris_map_delete", module_.get());
+
+    // chris_map_size(ptr map) -> i64
+    auto* mapSizeTy = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimeMapSize_ = llvm::Function::Create(mapSizeTy, llvm::Function::ExternalLinkage,
+                                              "chris_map_size", module_.get());
+
+    // chris_map_destroy(ptr map) -> void
+    auto* mapDestroyTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeMapDestroy_ = llvm::Function::Create(mapDestroyTy, llvm::Function::ExternalLinkage,
+                                                 "chris_map_destroy", module_.get());
+
+    // chris_map_keys(ptr map, ptr out_array) -> void
+    auto* mapKeysTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i8PtrTy}, false);
+    runtimeMapKeys_ = llvm::Function::Create(mapKeysTy, llvm::Function::ExternalLinkage,
+                                              "chris_map_keys", module_.get());
+
+    // Networking runtime functions (TCP)
+    // chris_tcp_connect(ptr host, i64 port) -> i64
+    auto* tcpConnectTy = llvm::FunctionType::get(i64Ty, {i8PtrTy, i64Ty}, false);
+    runtimeTcpConnect_ = llvm::Function::Create(tcpConnectTy, llvm::Function::ExternalLinkage,
+                                                  "chris_tcp_connect", module_.get());
+
+    // chris_tcp_listen(i64 port) -> i64
+    auto* tcpListenTy = llvm::FunctionType::get(i64Ty, {i64Ty}, false);
+    runtimeTcpListen_ = llvm::Function::Create(tcpListenTy, llvm::Function::ExternalLinkage,
+                                                 "chris_tcp_listen", module_.get());
+
+    // chris_tcp_accept(i64 serverFd) -> i64
+    auto* tcpAcceptTy = llvm::FunctionType::get(i64Ty, {i64Ty}, false);
+    runtimeTcpAccept_ = llvm::Function::Create(tcpAcceptTy, llvm::Function::ExternalLinkage,
+                                                 "chris_tcp_accept", module_.get());
+
+    // chris_tcp_send(i64 fd, ptr data) -> i64
+    auto* tcpSendTy = llvm::FunctionType::get(i64Ty, {i64Ty, i8PtrTy}, false);
+    runtimeTcpSend_ = llvm::Function::Create(tcpSendTy, llvm::Function::ExternalLinkage,
+                                               "chris_tcp_send", module_.get());
+
+    // chris_tcp_recv(i64 fd, i64 maxBytes) -> ptr
+    auto* tcpRecvTy = llvm::FunctionType::get(i8PtrTy, {i64Ty, i64Ty}, false);
+    runtimeTcpRecv_ = llvm::Function::Create(tcpRecvTy, llvm::Function::ExternalLinkage,
+                                               "chris_tcp_recv", module_.get());
+
+    // chris_tcp_close(i64 fd) -> void
+    auto* tcpCloseTy = llvm::FunctionType::get(voidTy, {i64Ty}, false);
+    runtimeTcpClose_ = llvm::Function::Create(tcpCloseTy, llvm::Function::ExternalLinkage,
+                                                "chris_tcp_close", module_.get());
+
+    // Networking runtime functions (UDP)
+    // chris_udp_create() -> i64
+    auto* udpCreateTy = llvm::FunctionType::get(i64Ty, {}, false);
+    runtimeUdpCreate_ = llvm::Function::Create(udpCreateTy, llvm::Function::ExternalLinkage,
+                                                 "chris_udp_create", module_.get());
+
+    // chris_udp_bind(i64 fd, i64 port) -> i64
+    auto* udpBindTy = llvm::FunctionType::get(i64Ty, {i64Ty, i64Ty}, false);
+    runtimeUdpBind_ = llvm::Function::Create(udpBindTy, llvm::Function::ExternalLinkage,
+                                               "chris_udp_bind", module_.get());
+
+    // chris_udp_send_to(i64 fd, ptr host, i64 port, ptr data) -> i64
+    auto* udpSendToTy = llvm::FunctionType::get(i64Ty, {i64Ty, i8PtrTy, i64Ty, i8PtrTy}, false);
+    runtimeUdpSendTo_ = llvm::Function::Create(udpSendToTy, llvm::Function::ExternalLinkage,
+                                                  "chris_udp_send_to", module_.get());
+
+    // chris_udp_recv_from(i64 fd, i64 maxBytes) -> ptr
+    auto* udpRecvFromTy = llvm::FunctionType::get(i8PtrTy, {i64Ty, i64Ty}, false);
+    runtimeUdpRecvFrom_ = llvm::Function::Create(udpRecvFromTy, llvm::Function::ExternalLinkage,
+                                                    "chris_udp_recv_from", module_.get());
+
+    // chris_udp_close(i64 fd) -> void
+    auto* udpCloseTy = llvm::FunctionType::get(voidTy, {i64Ty}, false);
+    runtimeUdpClose_ = llvm::Function::Create(udpCloseTy, llvm::Function::ExternalLinkage,
+                                                "chris_udp_close", module_.get());
+
+    // DNS runtime function
+    // chris_dns_lookup(ptr hostname) -> ptr
+    auto* dnsLookupTy = llvm::FunctionType::get(i8PtrTy, {i8PtrTy}, false);
+    runtimeDnsLookup_ = llvm::Function::Create(dnsLookupTy, llvm::Function::ExternalLinkage,
+                                                 "chris_dns_lookup", module_.get());
+
+    // ConcurrentMap runtime functions
+    // chris_cmap_create() -> ptr
+    auto* cmapCreateTy = llvm::FunctionType::get(i8PtrTy, {}, false);
+    runtimeCmapCreate_ = llvm::Function::Create(cmapCreateTy, llvm::Function::ExternalLinkage,
+                                                  "chris_cmap_create", module_.get());
+
+    // chris_cmap_set(ptr handle, ptr key, i64 value) -> void
+    auto* cmapSetTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i8PtrTy, i64Ty}, false);
+    runtimeCmapSet_ = llvm::Function::Create(cmapSetTy, llvm::Function::ExternalLinkage,
+                                               "chris_cmap_set", module_.get());
+
+    // chris_cmap_get(ptr handle, ptr key) -> i64
+    auto* cmapGetTy = llvm::FunctionType::get(i64Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeCmapGet_ = llvm::Function::Create(cmapGetTy, llvm::Function::ExternalLinkage,
+                                               "chris_cmap_get", module_.get());
+
+    // chris_cmap_has(ptr handle, ptr key) -> i64
+    auto* cmapHasTy = llvm::FunctionType::get(i64Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeCmapHas_ = llvm::Function::Create(cmapHasTy, llvm::Function::ExternalLinkage,
+                                               "chris_cmap_has", module_.get());
+
+    // chris_cmap_delete(ptr handle, ptr key) -> i64
+    auto* cmapDeleteTy = llvm::FunctionType::get(i64Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeCmapDelete_ = llvm::Function::Create(cmapDeleteTy, llvm::Function::ExternalLinkage,
+                                                  "chris_cmap_delete", module_.get());
+
+    // chris_cmap_size(ptr handle) -> i64
+    auto* cmapSizeTy = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimeCmapSize_ = llvm::Function::Create(cmapSizeTy, llvm::Function::ExternalLinkage,
+                                                "chris_cmap_size", module_.get());
+
+    // chris_cmap_destroy(ptr handle) -> void
+    auto* cmapDestroyTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeCmapDestroy_ = llvm::Function::Create(cmapDestroyTy, llvm::Function::ExternalLinkage,
+                                                   "chris_cmap_destroy", module_.get());
+
+    // ConcurrentQueue runtime functions
+    // chris_cqueue_create() -> ptr
+    auto* cqueueCreateTy = llvm::FunctionType::get(i8PtrTy, {}, false);
+    runtimeCqueueCreate_ = llvm::Function::Create(cqueueCreateTy, llvm::Function::ExternalLinkage,
+                                                    "chris_cqueue_create", module_.get());
+
+    // chris_cqueue_enqueue(ptr handle, i64 value) -> void
+    auto* cqueueEnqueueTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i64Ty}, false);
+    runtimeCqueueEnqueue_ = llvm::Function::Create(cqueueEnqueueTy, llvm::Function::ExternalLinkage,
+                                                     "chris_cqueue_enqueue", module_.get());
+
+    // chris_cqueue_dequeue(ptr handle) -> i64
+    auto* cqueueDequeueTy = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimeCqueueDequeue_ = llvm::Function::Create(cqueueDequeueTy, llvm::Function::ExternalLinkage,
+                                                     "chris_cqueue_dequeue", module_.get());
+
+    // chris_cqueue_size(ptr handle) -> i64
+    auto* cqueueSizeTy = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimeCqueueSize_ = llvm::Function::Create(cqueueSizeTy, llvm::Function::ExternalLinkage,
+                                                  "chris_cqueue_size", module_.get());
+
+    // chris_cqueue_is_empty(ptr handle) -> i64
+    auto* cqueueIsEmptyTy = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimeCqueueIsEmpty_ = llvm::Function::Create(cqueueIsEmptyTy, llvm::Function::ExternalLinkage,
+                                                     "chris_cqueue_is_empty", module_.get());
+
+    // chris_cqueue_destroy(ptr handle) -> void
+    auto* cqueueDestroyTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeCqueueDestroy_ = llvm::Function::Create(cqueueDestroyTy, llvm::Function::ExternalLinkage,
+                                                     "chris_cqueue_destroy", module_.get());
+
+    // Atomic runtime functions
+    // chris_atomic_create(i64 initial) -> i64
+    auto* atomicCreateTy = llvm::FunctionType::get(i64Ty, {i64Ty}, false);
+    runtimeAtomicCreate_ = llvm::Function::Create(atomicCreateTy, llvm::Function::ExternalLinkage,
+                                                    "chris_atomic_create", module_.get());
+
+    // chris_atomic_load(i64 handle) -> i64
+    auto* atomicLoadTy = llvm::FunctionType::get(i64Ty, {i64Ty}, false);
+    runtimeAtomicLoad_ = llvm::Function::Create(atomicLoadTy, llvm::Function::ExternalLinkage,
+                                                  "chris_atomic_load", module_.get());
+
+    // chris_atomic_store(i64 handle, i64 value) -> void
+    auto* atomicStoreTy = llvm::FunctionType::get(voidTy, {i64Ty, i64Ty}, false);
+    runtimeAtomicStore_ = llvm::Function::Create(atomicStoreTy, llvm::Function::ExternalLinkage,
+                                                   "chris_atomic_store", module_.get());
+
+    // chris_atomic_add(i64 handle, i64 delta) -> i64
+    auto* atomicAddTy = llvm::FunctionType::get(i64Ty, {i64Ty, i64Ty}, false);
+    runtimeAtomicAdd_ = llvm::Function::Create(atomicAddTy, llvm::Function::ExternalLinkage,
+                                                 "chris_atomic_add", module_.get());
+
+    // chris_atomic_sub(i64 handle, i64 delta) -> i64
+    auto* atomicSubTy = llvm::FunctionType::get(i64Ty, {i64Ty, i64Ty}, false);
+    runtimeAtomicSub_ = llvm::Function::Create(atomicSubTy, llvm::Function::ExternalLinkage,
+                                                 "chris_atomic_sub", module_.get());
+
+    // chris_atomic_compare_swap(i64 handle, i64 expected, i64 desired) -> i64
+    auto* atomicCasTy = llvm::FunctionType::get(i64Ty, {i64Ty, i64Ty, i64Ty}, false);
+    runtimeAtomicCompareSwap_ = llvm::Function::Create(atomicCasTy, llvm::Function::ExternalLinkage,
+                                                         "chris_atomic_compare_swap", module_.get());
+
+    // chris_atomic_destroy(i64 handle) -> void
+    auto* atomicDestroyTy = llvm::FunctionType::get(voidTy, {i64Ty}, false);
+    runtimeAtomicDestroy_ = llvm::Function::Create(atomicDestroyTy, llvm::Function::ExternalLinkage,
+                                                     "chris_atomic_destroy", module_.get());
+
+    // HTTP runtime functions (client)
+    // chris_http_get(ptr url) -> ptr
+    auto* httpGetTy = llvm::FunctionType::get(i8PtrTy, {i8PtrTy}, false);
+    runtimeHttpGet_ = llvm::Function::Create(httpGetTy, llvm::Function::ExternalLinkage,
+                                               "chris_http_get", module_.get());
+
+    // chris_http_post(ptr url, ptr body, ptr contentType) -> ptr
+    auto* httpPostTy = llvm::FunctionType::get(i8PtrTy, {i8PtrTy, i8PtrTy, i8PtrTy}, false);
+    runtimeHttpPost_ = llvm::Function::Create(httpPostTy, llvm::Function::ExternalLinkage,
+                                                "chris_http_post", module_.get());
+
+    // HTTP runtime functions (server)
+    // chris_http_server_create(i64 port) -> i64
+    auto* httpServerCreateTy = llvm::FunctionType::get(i64Ty, {i64Ty}, false);
+    runtimeHttpServerCreate_ = llvm::Function::Create(httpServerCreateTy, llvm::Function::ExternalLinkage,
+                                                        "chris_http_server_create", module_.get());
+
+    // chris_http_server_accept(i64 serverFd) -> i64
+    auto* httpServerAcceptTy = llvm::FunctionType::get(i64Ty, {i64Ty}, false);
+    runtimeHttpServerAccept_ = llvm::Function::Create(httpServerAcceptTy, llvm::Function::ExternalLinkage,
+                                                        "chris_http_server_accept", module_.get());
+
+    // chris_http_request_method(i64 handle) -> ptr
+    auto* httpReqMethodTy = llvm::FunctionType::get(i8PtrTy, {i64Ty}, false);
+    runtimeHttpRequestMethod_ = llvm::Function::Create(httpReqMethodTy, llvm::Function::ExternalLinkage,
+                                                         "chris_http_request_method", module_.get());
+
+    // chris_http_request_path(i64 handle) -> ptr
+    auto* httpReqPathTy = llvm::FunctionType::get(i8PtrTy, {i64Ty}, false);
+    runtimeHttpRequestPath_ = llvm::Function::Create(httpReqPathTy, llvm::Function::ExternalLinkage,
+                                                       "chris_http_request_path", module_.get());
+
+    // chris_http_request_body(i64 handle) -> ptr
+    auto* httpReqBodyTy = llvm::FunctionType::get(i8PtrTy, {i64Ty}, false);
+    runtimeHttpRequestBody_ = llvm::Function::Create(httpReqBodyTy, llvm::Function::ExternalLinkage,
+                                                       "chris_http_request_body", module_.get());
+
+    // chris_http_respond(i64 handle, i64 status, ptr body) -> void
+    auto* httpRespondTy = llvm::FunctionType::get(voidTy, {i64Ty, i64Ty, i8PtrTy}, false);
+    runtimeHttpRespond_ = llvm::Function::Create(httpRespondTy, llvm::Function::ExternalLinkage,
+                                                   "chris_http_respond", module_.get());
+
+    // chris_http_server_close(i64 serverFd) -> void
+    auto* httpServerCloseTy = llvm::FunctionType::get(voidTy, {i64Ty}, false);
+    runtimeHttpServerClose_ = llvm::Function::Create(httpServerCloseTy, llvm::Function::ExternalLinkage,
+                                                       "chris_http_server_close", module_.get());
+
+    // Set runtime functions
+    // chris_set_create() -> ptr
+    auto* setCreateTy = llvm::FunctionType::get(i8PtrTy, {}, false);
+    runtimeSetCreate_ = llvm::Function::Create(setCreateTy, llvm::Function::ExternalLinkage,
+                                                "chris_set_create", module_.get());
+
+    // chris_set_add(ptr set, ptr value) -> void
+    auto* setAddTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i8PtrTy}, false);
+    runtimeSetAdd_ = llvm::Function::Create(setAddTy, llvm::Function::ExternalLinkage,
+                                             "chris_set_add", module_.get());
+
+    // chris_set_has(ptr set, ptr value) -> i32
+    auto* setHasTy = llvm::FunctionType::get(i32Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeSetHas_ = llvm::Function::Create(setHasTy, llvm::Function::ExternalLinkage,
+                                             "chris_set_has", module_.get());
+
+    // chris_set_remove(ptr set, ptr value) -> i32
+    auto* setRemoveTy = llvm::FunctionType::get(i32Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeSetRemove_ = llvm::Function::Create(setRemoveTy, llvm::Function::ExternalLinkage,
+                                                "chris_set_remove", module_.get());
+
+    // chris_set_size(ptr set) -> i64
+    auto* setSizeTy = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimeSetSize_ = llvm::Function::Create(setSizeTy, llvm::Function::ExternalLinkage,
+                                              "chris_set_size", module_.get());
+
+    // chris_set_clear(ptr set) -> void
+    auto* setClearTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeSetClear_ = llvm::Function::Create(setClearTy, llvm::Function::ExternalLinkage,
+                                               "chris_set_clear", module_.get());
+
+    // chris_set_values(ptr set, ptr out_array) -> void
+    auto* setValuesTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i8PtrTy}, false);
+    runtimeSetValues_ = llvm::Function::Create(setValuesTy, llvm::Function::ExternalLinkage,
+                                                "chris_set_values", module_.get());
+
+    // chris_set_destroy(ptr set) -> void
+    auto* setDestroyTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeSetDestroy_ = llvm::Function::Create(setDestroyTy, llvm::Function::ExternalLinkage,
+                                                 "chris_set_destroy", module_.get());
+
     // Channel runtime functions
     // chris_channel_create(i64 capacity) -> ptr
     auto* chanCreateTy = llvm::FunctionType::get(i8PtrTy, {i64Ty}, false);
@@ -278,6 +629,128 @@ void CodeGen::declareRuntimeFunctions() {
     auto* chanDestroyTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
     runtimeChannelDestroy_ = llvm::Function::Create(chanDestroyTy, llvm::Function::ExternalLinkage,
                                                      "chris_channel_destroy", module_.get());
+
+    // Math runtime functions (Int)
+    auto* i64_i64Ty = llvm::FunctionType::get(i64Ty, {i64Ty}, false);
+    auto* i64_i64_i64Ty = llvm::FunctionType::get(i64Ty, {i64Ty, i64Ty}, false);
+    runtimeMathAbs_ = llvm::Function::Create(i64_i64Ty, llvm::Function::ExternalLinkage,
+                                              "chris_math_abs", module_.get());
+    runtimeMathMin_ = llvm::Function::Create(i64_i64_i64Ty, llvm::Function::ExternalLinkage,
+                                              "chris_math_min", module_.get());
+    runtimeMathMax_ = llvm::Function::Create(i64_i64_i64Ty, llvm::Function::ExternalLinkage,
+                                              "chris_math_max", module_.get());
+    runtimeMathRandom_ = llvm::Function::Create(i64_i64_i64Ty, llvm::Function::ExternalLinkage,
+                                                  "chris_math_random", module_.get());
+
+    // Math runtime functions (Float)
+    auto* d_dTy = llvm::FunctionType::get(doubleTy, {doubleTy}, false);
+    auto* d_d_dTy = llvm::FunctionType::get(doubleTy, {doubleTy, doubleTy}, false);
+    runtimeMathSqrt_ = llvm::Function::Create(d_dTy, llvm::Function::ExternalLinkage,
+                                               "chris_math_sqrt", module_.get());
+    runtimeMathPow_ = llvm::Function::Create(d_d_dTy, llvm::Function::ExternalLinkage,
+                                              "chris_math_pow", module_.get());
+    runtimeMathFloor_ = llvm::Function::Create(d_dTy, llvm::Function::ExternalLinkage,
+                                                "chris_math_floor", module_.get());
+    runtimeMathCeil_ = llvm::Function::Create(d_dTy, llvm::Function::ExternalLinkage,
+                                               "chris_math_ceil", module_.get());
+    runtimeMathRound_ = llvm::Function::Create(d_dTy, llvm::Function::ExternalLinkage,
+                                                "chris_math_round", module_.get());
+    runtimeMathLog_ = llvm::Function::Create(d_dTy, llvm::Function::ExternalLinkage,
+                                              "chris_math_log", module_.get());
+    runtimeMathSin_ = llvm::Function::Create(d_dTy, llvm::Function::ExternalLinkage,
+                                              "chris_math_sin", module_.get());
+    runtimeMathCos_ = llvm::Function::Create(d_dTy, llvm::Function::ExternalLinkage,
+                                              "chris_math_cos", module_.get());
+    runtimeMathTan_ = llvm::Function::Create(d_dTy, llvm::Function::ExternalLinkage,
+                                              "chris_math_tan", module_.get());
+    runtimeMathFabs_ = llvm::Function::Create(d_dTy, llvm::Function::ExternalLinkage,
+                                               "chris_math_fabs", module_.get());
+    runtimeMathFmin_ = llvm::Function::Create(d_d_dTy, llvm::Function::ExternalLinkage,
+                                               "chris_math_fmin", module_.get());
+    runtimeMathFmax_ = llvm::Function::Create(d_d_dTy, llvm::Function::ExternalLinkage,
+                                               "chris_math_fmax", module_.get());
+
+    // Stdin: chris_read_line() -> ptr
+    auto* readLineTy = llvm::FunctionType::get(i8PtrTy, {}, false);
+    runtimeReadLine_ = llvm::Function::Create(readLineTy, llvm::Function::ExternalLinkage,
+                                               "chris_read_line", module_.get());
+
+    // Test framework
+    // chris_assert(i64 cond, ptr msg, ptr file, i64 line) -> void
+    auto* assertTy = llvm::FunctionType::get(voidTy, {i64Ty, i8PtrTy, i8PtrTy, i64Ty}, false);
+    runtimeAssert_ = llvm::Function::Create(assertTy, llvm::Function::ExternalLinkage,
+                                             "chris_assert", module_.get());
+
+    // chris_assert_equal_int(i64 expected, i64 actual, ptr msg, i64 line) -> void
+    auto* assertEqIntTy = llvm::FunctionType::get(voidTy, {i64Ty, i64Ty, i8PtrTy, i64Ty}, false);
+    runtimeAssertEqualInt_ = llvm::Function::Create(assertEqIntTy, llvm::Function::ExternalLinkage,
+                                                      "chris_assert_equal_int", module_.get());
+
+    // chris_assert_equal_str(ptr expected, ptr actual, ptr msg, i64 line) -> void
+    auto* assertEqStrTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i8PtrTy, i8PtrTy, i64Ty}, false);
+    runtimeAssertEqualStr_ = llvm::Function::Create(assertEqStrTy, llvm::Function::ExternalLinkage,
+                                                      "chris_assert_equal_str", module_.get());
+
+    // JSON runtime functions
+    // chris_json_parse(ptr str) -> i64
+    auto* jsonParseTy = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimeJsonParse_ = llvm::Function::Create(jsonParseTy, llvm::Function::ExternalLinkage,
+                                                "chris_json_parse", module_.get());
+
+    // chris_json_get(i64 handle, ptr key) -> ptr
+    auto* jsonGetTy = llvm::FunctionType::get(i8PtrTy, {i64Ty, i8PtrTy}, false);
+    runtimeJsonGet_ = llvm::Function::Create(jsonGetTy, llvm::Function::ExternalLinkage,
+                                              "chris_json_get", module_.get());
+
+    // chris_json_get_int(i64 handle, ptr key) -> i64
+    auto* jsonGetIntTy = llvm::FunctionType::get(i64Ty, {i64Ty, i8PtrTy}, false);
+    runtimeJsonGetInt_ = llvm::Function::Create(jsonGetIntTy, llvm::Function::ExternalLinkage,
+                                                  "chris_json_get_int", module_.get());
+
+    // chris_json_get_bool(i64 handle, ptr key) -> i64
+    auto* jsonGetBoolTy = llvm::FunctionType::get(i64Ty, {i64Ty, i8PtrTy}, false);
+    runtimeJsonGetBool_ = llvm::Function::Create(jsonGetBoolTy, llvm::Function::ExternalLinkage,
+                                                    "chris_json_get_bool", module_.get());
+
+    // chris_json_get_float(i64 handle, ptr key) -> double
+    auto* jsonGetFloatTy = llvm::FunctionType::get(doubleTy, {i64Ty, i8PtrTy}, false);
+    runtimeJsonGetFloat_ = llvm::Function::Create(jsonGetFloatTy, llvm::Function::ExternalLinkage,
+                                                     "chris_json_get_float", module_.get());
+
+    // chris_json_get_array(i64 handle, ptr key) -> i64
+    auto* jsonGetArrTy = llvm::FunctionType::get(i64Ty, {i64Ty, i8PtrTy}, false);
+    runtimeJsonGetArray_ = llvm::Function::Create(jsonGetArrTy, llvm::Function::ExternalLinkage,
+                                                     "chris_json_get_array", module_.get());
+
+    // chris_json_get_object(i64 handle, ptr key) -> i64
+    auto* jsonGetObjTy = llvm::FunctionType::get(i64Ty, {i64Ty, i8PtrTy}, false);
+    runtimeJsonGetObject_ = llvm::Function::Create(jsonGetObjTy, llvm::Function::ExternalLinkage,
+                                                      "chris_json_get_object", module_.get());
+
+    // chris_json_array_length(i64 handle) -> i64
+    auto* jsonArrLenTy = llvm::FunctionType::get(i64Ty, {i64Ty}, false);
+    runtimeJsonArrayLength_ = llvm::Function::Create(jsonArrLenTy, llvm::Function::ExternalLinkage,
+                                                        "chris_json_array_length", module_.get());
+
+    // chris_json_array_get(i64 handle, i64 index) -> i64
+    auto* jsonArrGetTy = llvm::FunctionType::get(i64Ty, {i64Ty, i64Ty}, false);
+    runtimeJsonArrayGet_ = llvm::Function::Create(jsonArrGetTy, llvm::Function::ExternalLinkage,
+                                                     "chris_json_array_get", module_.get());
+
+    // chris_json_stringify(i64 handle) -> ptr
+    auto* jsonStringifyTy = llvm::FunctionType::get(i8PtrTy, {i64Ty}, false);
+    runtimeJsonStringify_ = llvm::Function::Create(jsonStringifyTy, llvm::Function::ExternalLinkage,
+                                                      "chris_json_stringify", module_.get());
+
+    // chris_assert_summary() -> void
+    auto* testSummaryTy = llvm::FunctionType::get(voidTy, {}, false);
+    runtimeTestSummary_ = llvm::Function::Create(testSummaryTy, llvm::Function::ExternalLinkage,
+                                                   "chris_assert_summary", module_.get());
+
+    // chris_assert_exit_code() -> i64
+    auto* testExitCodeTy = llvm::FunctionType::get(i64Ty, {}, false);
+    runtimeTestExitCode_ = llvm::Function::Create(testExitCodeTy, llvm::Function::ExternalLinkage,
+                                                    "chris_assert_exit_code", module_.get());
 }
 
 bool CodeGen::generate(Program& program,
@@ -348,6 +821,78 @@ bool CodeGen::generate(Program& program,
                 info.fieldNames.push_back(field->name);
             }
             info.structType->setBody(fieldTypes);
+
+            // Emit global TypeInfo for reflection
+            {
+                auto* i8PtrTy = llvm::PointerType::getUnqual(*context_);
+                auto* i64Ty = llvm::Type::getInt64Ty(*context_);
+
+                // Helper lambda to create a global string constant
+                auto makeGlobalStr = [&](const std::string& str, const std::string& name) -> llvm::Constant* {
+                    auto* strConst = llvm::ConstantDataArray::getString(*context_, str);
+                    auto* strGlobal = new llvm::GlobalVariable(*module_,
+                        strConst->getType(), true, llvm::GlobalValue::PrivateLinkage,
+                        strConst, name);
+                    strGlobal->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
+                    return llvm::ConstantExpr::getInBoundsGetElementPtr(
+                        strConst->getType(), strGlobal,
+                        llvm::ArrayRef<llvm::Constant*>{
+                            llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 0),
+                            llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 0)
+                        });
+                };
+
+                // Create global string for class name
+                auto* nameStr = makeGlobalStr(cls->name, "typeinfo.name." + cls->name);
+
+                // Create global array of field name strings
+                std::vector<llvm::Constant*> fieldNamePtrs;
+                for (auto& fname : info.fieldNames) {
+                    fieldNamePtrs.push_back(makeGlobalStr(fname, "typeinfo.field." + cls->name + "." + fname));
+                }
+                llvm::Constant* fieldsArray = nullptr;
+                if (fieldNamePtrs.empty()) {
+                    fieldsArray = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(i8PtrTy));
+                } else {
+                    auto* arrTy = llvm::ArrayType::get(i8PtrTy, fieldNamePtrs.size());
+                    auto* fieldsGlobal = new llvm::GlobalVariable(*module_, arrTy, true,
+                        llvm::GlobalValue::PrivateLinkage,
+                        llvm::ConstantArray::get(arrTy, fieldNamePtrs),
+                        "typeinfo.fields." + cls->name);
+                    fieldsArray = llvm::ConstantExpr::getBitCast(fieldsGlobal, i8PtrTy);
+                }
+
+                // Create global array of interface name strings
+                std::vector<llvm::Constant*> ifaceNamePtrs;
+                for (auto& iname : cls->interfaces) {
+                    ifaceNamePtrs.push_back(makeGlobalStr(iname, "typeinfo.iface." + cls->name + "." + iname));
+                }
+                llvm::Constant* implArray = nullptr;
+                if (ifaceNamePtrs.empty()) {
+                    implArray = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(i8PtrTy));
+                } else {
+                    auto* arrTy = llvm::ArrayType::get(i8PtrTy, ifaceNamePtrs.size());
+                    auto* implGlobal = new llvm::GlobalVariable(*module_, arrTy, true,
+                        llvm::GlobalValue::PrivateLinkage,
+                        llvm::ConstantArray::get(arrTy, ifaceNamePtrs),
+                        "typeinfo.impls." + cls->name);
+                    implArray = llvm::ConstantExpr::getBitCast(implGlobal, i8PtrTy);
+                }
+
+                // Build the TypeInfo struct constant
+                auto* tiConst = llvm::ConstantStruct::get(typeInfoStructType_, {
+                    nameStr,
+                    llvm::ConstantInt::get(i64Ty, info.fieldNames.size()),
+                    fieldsArray,
+                    llvm::ConstantInt::get(i64Ty, cls->interfaces.size()),
+                    implArray
+                });
+
+                auto* tiGlobal = new llvm::GlobalVariable(*module_, typeInfoStructType_, true,
+                    llvm::GlobalValue::PrivateLinkage, tiConst,
+                    "typeinfo." + cls->name);
+                typeInfoGlobals_[cls->name] = tiGlobal;
+            }
         }
     }
 
@@ -832,7 +1377,7 @@ void CodeGen::emitVarDecl(VarDecl& decl) {
         namedValues_[decl.name] = alloca;
     }
 
-    // Track class type for variable (needed for generic method dispatch)
+    // Track class type for variable (needed for generic method dispatch and typeof)
     if (decl.typeAnnotation) {
         auto* named = dynamic_cast<NamedType*>(decl.typeAnnotation.get());
         if (named) {
@@ -847,6 +1392,25 @@ void CodeGen::emitVarDecl(VarDecl& decl) {
                 varClassMap_[decl.name] = mangledName;
             } else if (classInfos_.count(named->name)) {
                 varClassMap_[decl.name] = named->name;
+            }
+        }
+    }
+    // Also infer class from ConstructExpr initializer (e.g. var u = User { ... })
+    if (decl.initializer) {
+        if (auto* construct = dynamic_cast<ConstructExpr*>(decl.initializer.get())) {
+            if (classInfos_.count(construct->className)) {
+                varClassMap_[decl.name] = construct->className;
+            }
+        }
+    }
+
+    // Track Set variables (for disambiguating .size from Map.size)
+    if (decl.initializer) {
+        if (auto* call = dynamic_cast<CallExpr*>(decl.initializer.get())) {
+            if (auto* ident = dynamic_cast<IdentifierExpr*>(call->callee.get())) {
+                if (ident->name == "Set") {
+                    varSetNames_.insert(decl.name);
+                }
             }
         }
     }
@@ -1377,6 +1941,112 @@ llvm::Value* CodeGen::emitCallExpr(CallExpr& expr) {
             }
         }
 
+        // Map methods: set, get, has, delete, keys
+        {
+            const std::string& method = memberCallee->member;
+            if (method == "set" || method == "get" || method == "has" ||
+                method == "delete" || method == "keys") {
+                if (auto* mapIdent = dynamic_cast<IdentifierExpr*>(memberCallee->object.get())) {
+                    auto it = namedValues_.find(mapIdent->name);
+                    if (it != namedValues_.end()) {
+                        llvm::Value* mapPtr = builder_->CreateLoad(
+                            llvm::PointerType::getUnqual(*context_), it->second, "map.ptr");
+
+                        if (method == "set" && expr.arguments.size() >= 2) {
+                            llvm::Value* key = emitExpr(*expr.arguments[0]);
+                            llvm::Value* val = emitExpr(*expr.arguments[1]);
+                            if (!key || !val) return nullptr;
+                            // Convert value to i64 for storage
+                            auto* i64Ty = llvm::Type::getInt64Ty(*context_);
+                            llvm::Value* valI64;
+                            if (val->getType()->isPointerTy()) {
+                                valI64 = builder_->CreatePtrToInt(val, i64Ty);
+                            } else if (val->getType()->isDoubleTy()) {
+                                valI64 = builder_->CreateBitCast(val, i64Ty);
+                            } else {
+                                valI64 = val;
+                            }
+                            builder_->CreateCall(runtimeMapSet_, {mapPtr, key, valI64});
+                            return nullptr;
+                        }
+                        if (method == "get" && expr.arguments.size() >= 1) {
+                            llvm::Value* key = emitExpr(*expr.arguments[0]);
+                            if (!key) return nullptr;
+                            return builder_->CreateCall(runtimeMapGet_, {mapPtr, key}, "map.get");
+                        }
+                        if (method == "has" && expr.arguments.size() >= 1) {
+                            llvm::Value* key = emitExpr(*expr.arguments[0]);
+                            if (!key) return nullptr;
+                            auto* result = builder_->CreateCall(runtimeMapHas_, {mapPtr, key}, "map.has");
+                            // Convert i32 to i1 for bool
+                            return builder_->CreateICmpNE(result,
+                                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), "map.has.bool");
+                        }
+                        if (method == "delete" && expr.arguments.size() >= 1) {
+                            llvm::Value* key = emitExpr(*expr.arguments[0]);
+                            if (!key) return nullptr;
+                            auto* result = builder_->CreateCall(runtimeMapDelete_, {mapPtr, key}, "map.del");
+                            return builder_->CreateICmpNE(result,
+                                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), "map.del.bool");
+                        }
+                        if (method == "keys") {
+                            auto* outArr = builder_->CreateAlloca(arrayStructType_, nullptr, "map.keys.arr");
+                            builder_->CreateCall(runtimeMapKeys_, {mapPtr, outArr});
+                            return outArr;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Set methods: add, has, remove, size, clear, values
+        {
+            const std::string& method = memberCallee->member;
+            if (method == "add" || method == "has" || method == "remove" ||
+                method == "size" || method == "clear" || method == "values") {
+                if (auto* setIdent = dynamic_cast<IdentifierExpr*>(memberCallee->object.get())) {
+                    auto it = namedValues_.find(setIdent->name);
+                    if (it != namedValues_.end()) {
+                        llvm::Value* setPtr = builder_->CreateLoad(
+                            llvm::PointerType::getUnqual(*context_), it->second, "set.ptr");
+
+                        if (method == "add" && expr.arguments.size() >= 1) {
+                            llvm::Value* val = emitExpr(*expr.arguments[0]);
+                            if (!val) return nullptr;
+                            builder_->CreateCall(runtimeSetAdd_, {setPtr, val});
+                            return nullptr;
+                        }
+                        if (method == "has" && expr.arguments.size() >= 1) {
+                            llvm::Value* val = emitExpr(*expr.arguments[0]);
+                            if (!val) return nullptr;
+                            auto* result = builder_->CreateCall(runtimeSetHas_, {setPtr, val}, "set.has");
+                            return builder_->CreateICmpNE(result,
+                                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), "set.has.bool");
+                        }
+                        if (method == "remove" && expr.arguments.size() >= 1) {
+                            llvm::Value* val = emitExpr(*expr.arguments[0]);
+                            if (!val) return nullptr;
+                            auto* result = builder_->CreateCall(runtimeSetRemove_, {setPtr, val}, "set.rm");
+                            return builder_->CreateICmpNE(result,
+                                llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), "set.rm.bool");
+                        }
+                        if (method == "size") {
+                            return builder_->CreateCall(runtimeSetSize_, {setPtr}, "set.size");
+                        }
+                        if (method == "clear") {
+                            builder_->CreateCall(runtimeSetClear_, {setPtr});
+                            return nullptr;
+                        }
+                        if (method == "values") {
+                            auto* outArr = builder_->CreateAlloca(arrayStructType_, nullptr, "set.vals.arr");
+                            builder_->CreateCall(runtimeSetValues_, {setPtr, outArr});
+                            return outArr;
+                        }
+                    }
+                }
+            }
+        }
+
         // Primitive type conversion methods and String methods
         {
             const std::string& method = memberCallee->member;
@@ -1692,6 +2362,577 @@ llvm::Value* CodeGen::emitCallExpr(CallExpr& expr) {
         return nullptr;
     }
 
+    // Built-in Map() constructor
+    if (identCallee->name == "Map") {
+        return builder_->CreateCall(runtimeMapCreate_, {}, "map.new");
+    }
+
+    // Built-in Set() constructor
+    if (identCallee->name == "Set") {
+        return builder_->CreateCall(runtimeSetCreate_, {}, "set.new");
+    }
+
+    // Built-in typeof() for reflection
+    if (identCallee->name == "typeof" && expr.arguments.size() >= 1) {
+        // Determine the class name of the argument
+        // If the argument is an identifier, look up its class from varClassMap_
+        if (auto* argIdent = dynamic_cast<IdentifierExpr*>(expr.arguments[0].get())) {
+            auto vcIt = varClassMap_.find(argIdent->name);
+            if (vcIt != varClassMap_.end()) {
+                auto tiIt = typeInfoGlobals_.find(vcIt->second);
+                if (tiIt != typeInfoGlobals_.end()) {
+                    return tiIt->second;
+                }
+            }
+        }
+        // If it's a ConstructExpr, use the class name directly
+        if (auto* construct = dynamic_cast<ConstructExpr*>(expr.arguments[0].get())) {
+            auto tiIt = typeInfoGlobals_.find(construct->className);
+            if (tiIt != typeInfoGlobals_.end()) {
+                // Still emit the construct expression (for side effects), then return TypeInfo
+                emitExpr(*expr.arguments[0]);
+                return tiIt->second;
+            }
+        }
+        // Fallback: emit argument and return null
+        emitExpr(*expr.arguments[0]);
+        return llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(*context_));
+    }
+
+    // Built-in math functions (Int)
+    if (identCallee->name == "abs" && expr.arguments.size() >= 1) {
+        llvm::Value* arg = emitExpr(*expr.arguments[0]);
+        if (!arg) return nullptr;
+        return builder_->CreateCall(runtimeMathAbs_, {arg}, "math.abs");
+    }
+    if (identCallee->name == "min" && expr.arguments.size() >= 2) {
+        llvm::Value* a = emitExpr(*expr.arguments[0]);
+        llvm::Value* b = emitExpr(*expr.arguments[1]);
+        if (!a || !b) return nullptr;
+        return builder_->CreateCall(runtimeMathMin_, {a, b}, "math.min");
+    }
+    if (identCallee->name == "max" && expr.arguments.size() >= 2) {
+        llvm::Value* a = emitExpr(*expr.arguments[0]);
+        llvm::Value* b = emitExpr(*expr.arguments[1]);
+        if (!a || !b) return nullptr;
+        return builder_->CreateCall(runtimeMathMax_, {a, b}, "math.max");
+    }
+    if (identCallee->name == "random" && expr.arguments.size() >= 2) {
+        llvm::Value* lo = emitExpr(*expr.arguments[0]);
+        llvm::Value* hi = emitExpr(*expr.arguments[1]);
+        if (!lo || !hi) return nullptr;
+        return builder_->CreateCall(runtimeMathRandom_, {lo, hi}, "math.random");
+    }
+
+    // Built-in math functions (Float)
+    if (identCallee->name == "sqrt" && expr.arguments.size() >= 1) {
+        llvm::Value* arg = emitExpr(*expr.arguments[0]);
+        if (!arg) return nullptr;
+        return builder_->CreateCall(runtimeMathSqrt_, {arg}, "math.sqrt");
+    }
+    if (identCallee->name == "pow" && expr.arguments.size() >= 2) {
+        llvm::Value* base = emitExpr(*expr.arguments[0]);
+        llvm::Value* exp = emitExpr(*expr.arguments[1]);
+        if (!base || !exp) return nullptr;
+        return builder_->CreateCall(runtimeMathPow_, {base, exp}, "math.pow");
+    }
+    if (identCallee->name == "floor" && expr.arguments.size() >= 1) {
+        llvm::Value* arg = emitExpr(*expr.arguments[0]);
+        if (!arg) return nullptr;
+        return builder_->CreateCall(runtimeMathFloor_, {arg}, "math.floor");
+    }
+    if (identCallee->name == "ceil" && expr.arguments.size() >= 1) {
+        llvm::Value* arg = emitExpr(*expr.arguments[0]);
+        if (!arg) return nullptr;
+        return builder_->CreateCall(runtimeMathCeil_, {arg}, "math.ceil");
+    }
+    if (identCallee->name == "round" && expr.arguments.size() >= 1) {
+        llvm::Value* arg = emitExpr(*expr.arguments[0]);
+        if (!arg) return nullptr;
+        return builder_->CreateCall(runtimeMathRound_, {arg}, "math.round");
+    }
+    if (identCallee->name == "log" && expr.arguments.size() >= 1) {
+        llvm::Value* arg = emitExpr(*expr.arguments[0]);
+        if (!arg) return nullptr;
+        return builder_->CreateCall(runtimeMathLog_, {arg}, "math.log");
+    }
+    if (identCallee->name == "sin" && expr.arguments.size() >= 1) {
+        llvm::Value* arg = emitExpr(*expr.arguments[0]);
+        if (!arg) return nullptr;
+        return builder_->CreateCall(runtimeMathSin_, {arg}, "math.sin");
+    }
+    if (identCallee->name == "cos" && expr.arguments.size() >= 1) {
+        llvm::Value* arg = emitExpr(*expr.arguments[0]);
+        if (!arg) return nullptr;
+        return builder_->CreateCall(runtimeMathCos_, {arg}, "math.cos");
+    }
+    if (identCallee->name == "tan" && expr.arguments.size() >= 1) {
+        llvm::Value* arg = emitExpr(*expr.arguments[0]);
+        if (!arg) return nullptr;
+        return builder_->CreateCall(runtimeMathTan_, {arg}, "math.tan");
+    }
+    if (identCallee->name == "fabs" && expr.arguments.size() >= 1) {
+        llvm::Value* arg = emitExpr(*expr.arguments[0]);
+        if (!arg) return nullptr;
+        return builder_->CreateCall(runtimeMathFabs_, {arg}, "math.fabs");
+    }
+    if (identCallee->name == "fmin" && expr.arguments.size() >= 2) {
+        llvm::Value* a = emitExpr(*expr.arguments[0]);
+        llvm::Value* b = emitExpr(*expr.arguments[1]);
+        if (!a || !b) return nullptr;
+        return builder_->CreateCall(runtimeMathFmin_, {a, b}, "math.fmin");
+    }
+    if (identCallee->name == "fmax" && expr.arguments.size() >= 2) {
+        llvm::Value* a = emitExpr(*expr.arguments[0]);
+        llvm::Value* b = emitExpr(*expr.arguments[1]);
+        if (!a || !b) return nullptr;
+        return builder_->CreateCall(runtimeMathFmax_, {a, b}, "math.fmax");
+    }
+
+    // Built-in readLine()
+    if (identCallee->name == "readLine" && expr.arguments.empty()) {
+        return builder_->CreateCall(runtimeReadLine_, {}, "stdin.line");
+    }
+
+    // Built-in networking functions (TCP)
+    if (identCallee->name == "tcpConnect" && expr.arguments.size() >= 2) {
+        llvm::Value* host = emitExpr(*expr.arguments[0]);
+        llvm::Value* port = emitExpr(*expr.arguments[1]);
+        if (!host || !port) return nullptr;
+        return builder_->CreateCall(runtimeTcpConnect_, {host, port}, "tcp.connect");
+    }
+    if (identCallee->name == "tcpListen" && expr.arguments.size() >= 1) {
+        llvm::Value* port = emitExpr(*expr.arguments[0]);
+        if (!port) return nullptr;
+        return builder_->CreateCall(runtimeTcpListen_, {port}, "tcp.listen");
+    }
+    if (identCallee->name == "tcpAccept" && expr.arguments.size() >= 1) {
+        llvm::Value* serverFd = emitExpr(*expr.arguments[0]);
+        if (!serverFd) return nullptr;
+        return builder_->CreateCall(runtimeTcpAccept_, {serverFd}, "tcp.accept");
+    }
+    if (identCallee->name == "tcpSend" && expr.arguments.size() >= 2) {
+        llvm::Value* fd = emitExpr(*expr.arguments[0]);
+        llvm::Value* data = emitExpr(*expr.arguments[1]);
+        if (!fd || !data) return nullptr;
+        return builder_->CreateCall(runtimeTcpSend_, {fd, data}, "tcp.send");
+    }
+    if (identCallee->name == "tcpRecv" && expr.arguments.size() >= 2) {
+        llvm::Value* fd = emitExpr(*expr.arguments[0]);
+        llvm::Value* maxBytes = emitExpr(*expr.arguments[1]);
+        if (!fd || !maxBytes) return nullptr;
+        return builder_->CreateCall(runtimeTcpRecv_, {fd, maxBytes}, "tcp.recv");
+    }
+    if (identCallee->name == "tcpClose" && expr.arguments.size() >= 1) {
+        llvm::Value* fd = emitExpr(*expr.arguments[0]);
+        if (!fd) return nullptr;
+        builder_->CreateCall(runtimeTcpClose_, {fd});
+        return nullptr;
+    }
+
+    // Built-in networking functions (UDP)
+    if (identCallee->name == "udpCreate" && expr.arguments.empty()) {
+        return builder_->CreateCall(runtimeUdpCreate_, {}, "udp.create");
+    }
+    if (identCallee->name == "udpBind" && expr.arguments.size() >= 2) {
+        llvm::Value* fd = emitExpr(*expr.arguments[0]);
+        llvm::Value* port = emitExpr(*expr.arguments[1]);
+        if (!fd || !port) return nullptr;
+        return builder_->CreateCall(runtimeUdpBind_, {fd, port}, "udp.bind");
+    }
+    if (identCallee->name == "udpSendTo" && expr.arguments.size() >= 4) {
+        llvm::Value* fd = emitExpr(*expr.arguments[0]);
+        llvm::Value* host = emitExpr(*expr.arguments[1]);
+        llvm::Value* port = emitExpr(*expr.arguments[2]);
+        llvm::Value* data = emitExpr(*expr.arguments[3]);
+        if (!fd || !host || !port || !data) return nullptr;
+        return builder_->CreateCall(runtimeUdpSendTo_, {fd, host, port, data}, "udp.sendto");
+    }
+    if (identCallee->name == "udpRecvFrom" && expr.arguments.size() >= 2) {
+        llvm::Value* fd = emitExpr(*expr.arguments[0]);
+        llvm::Value* maxBytes = emitExpr(*expr.arguments[1]);
+        if (!fd || !maxBytes) return nullptr;
+        return builder_->CreateCall(runtimeUdpRecvFrom_, {fd, maxBytes}, "udp.recvfrom");
+    }
+    if (identCallee->name == "udpClose" && expr.arguments.size() >= 1) {
+        llvm::Value* fd = emitExpr(*expr.arguments[0]);
+        if (!fd) return nullptr;
+        builder_->CreateCall(runtimeUdpClose_, {fd});
+        return nullptr;
+    }
+
+    // Built-in DNS
+    if (identCallee->name == "dnsLookup" && expr.arguments.size() >= 1) {
+        llvm::Value* hostname = emitExpr(*expr.arguments[0]);
+        if (!hostname) return nullptr;
+        return builder_->CreateCall(runtimeDnsLookup_, {hostname}, "dns.lookup");
+    }
+
+    // Built-in ConcurrentMap functions
+    if (identCallee->name == "ConcurrentMap" && expr.arguments.empty()) {
+        auto* ptr = builder_->CreateCall(runtimeCmapCreate_, {}, "cmap.new");
+        return builder_->CreatePtrToInt(ptr, builder_->getInt64Ty());
+    }
+    if (identCallee->name == "cmapSet" && expr.arguments.size() >= 3) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* key = emitExpr(*expr.arguments[1]);
+        llvm::Value* value = emitExpr(*expr.arguments[2]);
+        if (!handle || !key || !value) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        builder_->CreateCall(runtimeCmapSet_, {ptr, key, value});
+        return nullptr;
+    }
+    if (identCallee->name == "cmapGet" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* key = emitExpr(*expr.arguments[1]);
+        if (!handle || !key) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        return builder_->CreateCall(runtimeCmapGet_, {ptr, key}, "cmap.get");
+    }
+    if (identCallee->name == "cmapHas" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* key = emitExpr(*expr.arguments[1]);
+        if (!handle || !key) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        return builder_->CreateCall(runtimeCmapHas_, {ptr, key}, "cmap.has");
+    }
+    if (identCallee->name == "cmapDelete" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* key = emitExpr(*expr.arguments[1]);
+        if (!handle || !key) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        return builder_->CreateCall(runtimeCmapDelete_, {ptr, key}, "cmap.del");
+    }
+    if (identCallee->name == "cmapSize" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        return builder_->CreateCall(runtimeCmapSize_, {ptr}, "cmap.size");
+    }
+    if (identCallee->name == "cmapDestroy" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        builder_->CreateCall(runtimeCmapDestroy_, {ptr});
+        return nullptr;
+    }
+
+    // Built-in ConcurrentQueue functions
+    if (identCallee->name == "ConcurrentQueue" && expr.arguments.empty()) {
+        auto* ptr = builder_->CreateCall(runtimeCqueueCreate_, {}, "cqueue.new");
+        return builder_->CreatePtrToInt(ptr, builder_->getInt64Ty());
+    }
+    if (identCallee->name == "cqueueEnqueue" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* value = emitExpr(*expr.arguments[1]);
+        if (!handle || !value) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        builder_->CreateCall(runtimeCqueueEnqueue_, {ptr, value});
+        return nullptr;
+    }
+    if (identCallee->name == "cqueueDequeue" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        return builder_->CreateCall(runtimeCqueueDequeue_, {ptr}, "cqueue.deq");
+    }
+    if (identCallee->name == "cqueueSize" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        return builder_->CreateCall(runtimeCqueueSize_, {ptr}, "cqueue.size");
+    }
+    if (identCallee->name == "cqueueIsEmpty" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        return builder_->CreateCall(runtimeCqueueIsEmpty_, {ptr}, "cqueue.empty");
+    }
+    if (identCallee->name == "cqueueDestroy" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        auto* ptr = builder_->CreateIntToPtr(handle, builder_->getPtrTy());
+        builder_->CreateCall(runtimeCqueueDestroy_, {ptr});
+        return nullptr;
+    }
+
+    // Built-in Atomic functions
+    if (identCallee->name == "atomicCreate" && expr.arguments.size() >= 1) {
+        llvm::Value* initial = emitExpr(*expr.arguments[0]);
+        if (!initial) return nullptr;
+        return builder_->CreateCall(runtimeAtomicCreate_, {initial}, "atomic.new");
+    }
+    if (identCallee->name == "atomicLoad" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        return builder_->CreateCall(runtimeAtomicLoad_, {handle}, "atomic.load");
+    }
+    if (identCallee->name == "atomicStore" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* value = emitExpr(*expr.arguments[1]);
+        if (!handle || !value) return nullptr;
+        builder_->CreateCall(runtimeAtomicStore_, {handle, value});
+        return nullptr;
+    }
+    if (identCallee->name == "atomicAdd" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* delta = emitExpr(*expr.arguments[1]);
+        if (!handle || !delta) return nullptr;
+        return builder_->CreateCall(runtimeAtomicAdd_, {handle, delta}, "atomic.add");
+    }
+    if (identCallee->name == "atomicSub" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* delta = emitExpr(*expr.arguments[1]);
+        if (!handle || !delta) return nullptr;
+        return builder_->CreateCall(runtimeAtomicSub_, {handle, delta}, "atomic.sub");
+    }
+    if (identCallee->name == "atomicCompareSwap" && expr.arguments.size() >= 3) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* expected = emitExpr(*expr.arguments[1]);
+        llvm::Value* desired = emitExpr(*expr.arguments[2]);
+        if (!handle || !expected || !desired) return nullptr;
+        return builder_->CreateCall(runtimeAtomicCompareSwap_, {handle, expected, desired}, "atomic.cas");
+    }
+    if (identCallee->name == "atomicDestroy" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        builder_->CreateCall(runtimeAtomicDestroy_, {handle});
+        return nullptr;
+    }
+
+    // Built-in HTTP client functions
+    if (identCallee->name == "httpGet" && expr.arguments.size() >= 1) {
+        llvm::Value* url = emitExpr(*expr.arguments[0]);
+        if (!url) return nullptr;
+        return builder_->CreateCall(runtimeHttpGet_, {url}, "http.get");
+    }
+    if (identCallee->name == "httpPost" && expr.arguments.size() >= 3) {
+        llvm::Value* url = emitExpr(*expr.arguments[0]);
+        llvm::Value* body = emitExpr(*expr.arguments[1]);
+        llvm::Value* ct = emitExpr(*expr.arguments[2]);
+        if (!url || !body || !ct) return nullptr;
+        return builder_->CreateCall(runtimeHttpPost_, {url, body, ct}, "http.post");
+    }
+
+    // Built-in HTTP server functions
+    if (identCallee->name == "httpServerCreate" && expr.arguments.size() >= 1) {
+        llvm::Value* port = emitExpr(*expr.arguments[0]);
+        if (!port) return nullptr;
+        return builder_->CreateCall(runtimeHttpServerCreate_, {port}, "http.server");
+    }
+    if (identCallee->name == "httpServerAccept" && expr.arguments.size() >= 1) {
+        llvm::Value* server = emitExpr(*expr.arguments[0]);
+        if (!server) return nullptr;
+        return builder_->CreateCall(runtimeHttpServerAccept_, {server}, "http.accept");
+    }
+    if (identCallee->name == "httpRequestMethod" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        return builder_->CreateCall(runtimeHttpRequestMethod_, {handle}, "http.method");
+    }
+    if (identCallee->name == "httpRequestPath" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        return builder_->CreateCall(runtimeHttpRequestPath_, {handle}, "http.path");
+    }
+    if (identCallee->name == "httpRequestBody" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        return builder_->CreateCall(runtimeHttpRequestBody_, {handle}, "http.body");
+    }
+    if (identCallee->name == "httpRespond" && expr.arguments.size() >= 3) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* status = emitExpr(*expr.arguments[1]);
+        llvm::Value* body = emitExpr(*expr.arguments[2]);
+        if (!handle || !status || !body) return nullptr;
+        builder_->CreateCall(runtimeHttpRespond_, {handle, status, body});
+        return nullptr;
+    }
+    if (identCallee->name == "httpServerClose" && expr.arguments.size() >= 1) {
+        llvm::Value* server = emitExpr(*expr.arguments[0]);
+        if (!server) return nullptr;
+        builder_->CreateCall(runtimeHttpServerClose_, {server});
+        return nullptr;
+    }
+
+    // Built-in JSON functions
+    if (identCallee->name == "jsonParse" && expr.arguments.size() >= 1) {
+        llvm::Value* str = emitExpr(*expr.arguments[0]);
+        if (!str) return nullptr;
+        return builder_->CreateCall(runtimeJsonParse_, {str}, "json.parse");
+    }
+    if (identCallee->name == "jsonGet" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* key = emitExpr(*expr.arguments[1]);
+        if (!handle || !key) return nullptr;
+        return builder_->CreateCall(runtimeJsonGet_, {handle, key}, "json.get");
+    }
+    if (identCallee->name == "jsonGetInt" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* key = emitExpr(*expr.arguments[1]);
+        if (!handle || !key) return nullptr;
+        return builder_->CreateCall(runtimeJsonGetInt_, {handle, key}, "json.getint");
+    }
+    if (identCallee->name == "jsonGetBool" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* key = emitExpr(*expr.arguments[1]);
+        if (!handle || !key) return nullptr;
+        auto* result = builder_->CreateCall(runtimeJsonGetBool_, {handle, key}, "json.getbool");
+        return builder_->CreateICmpNE(result, llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 0), "json.bool");
+    }
+    if (identCallee->name == "jsonGetFloat" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* key = emitExpr(*expr.arguments[1]);
+        if (!handle || !key) return nullptr;
+        return builder_->CreateCall(runtimeJsonGetFloat_, {handle, key}, "json.getfloat");
+    }
+    if (identCallee->name == "jsonGetArray" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* key = emitExpr(*expr.arguments[1]);
+        if (!handle || !key) return nullptr;
+        return builder_->CreateCall(runtimeJsonGetArray_, {handle, key}, "json.getarr");
+    }
+    if (identCallee->name == "jsonGetObject" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* key = emitExpr(*expr.arguments[1]);
+        if (!handle || !key) return nullptr;
+        return builder_->CreateCall(runtimeJsonGetObject_, {handle, key}, "json.getobj");
+    }
+    if (identCallee->name == "jsonArrayLength" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        return builder_->CreateCall(runtimeJsonArrayLength_, {handle}, "json.arrlen");
+    }
+    if (identCallee->name == "jsonArrayGet" && expr.arguments.size() >= 2) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* index = emitExpr(*expr.arguments[1]);
+        if (!handle || !index) return nullptr;
+        return builder_->CreateCall(runtimeJsonArrayGet_, {handle, index}, "json.arrget");
+    }
+    if (identCallee->name == "jsonStringify" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        return builder_->CreateCall(runtimeJsonStringify_, {handle}, "json.stringify");
+    }
+
+    // Built-in test assertions
+    if (identCallee->name == "assert" && expr.arguments.size() >= 1) {
+        llvm::Value* cond = emitExpr(*expr.arguments[0]);
+        if (!cond) return nullptr;
+        // Convert bool (i1) to i64
+        if (cond->getType()->isIntegerTy(1)) {
+            cond = builder_->CreateZExt(cond, llvm::Type::getInt64Ty(*context_));
+        }
+        llvm::Value* msg = nullptr;
+        if (expr.arguments.size() >= 2) {
+            msg = emitExpr(*expr.arguments[1]);
+        } else {
+            msg = builder_->CreateGlobalStringPtr("assertion failed");
+        }
+        auto* file = builder_->CreateGlobalStringPtr(expr.location.file);
+        auto* line = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), expr.location.line);
+        builder_->CreateCall(runtimeAssert_, {cond, msg, file, line});
+        return nullptr;
+    }
+    if (identCallee->name == "assertTrue" && expr.arguments.size() >= 1) {
+        llvm::Value* cond = emitExpr(*expr.arguments[0]);
+        if (!cond) return nullptr;
+        if (cond->getType()->isIntegerTy(1)) {
+            cond = builder_->CreateZExt(cond, llvm::Type::getInt64Ty(*context_));
+        }
+        llvm::Value* msg = nullptr;
+        if (expr.arguments.size() >= 2) {
+            msg = emitExpr(*expr.arguments[1]);
+        } else {
+            msg = builder_->CreateGlobalStringPtr("assertTrue failed");
+        }
+        auto* file = builder_->CreateGlobalStringPtr(expr.location.file);
+        auto* line = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), expr.location.line);
+        builder_->CreateCall(runtimeAssert_, {cond, msg, file, line});
+        return nullptr;
+    }
+    if (identCallee->name == "assertFalse" && expr.arguments.size() >= 1) {
+        llvm::Value* cond = emitExpr(*expr.arguments[0]);
+        if (!cond) return nullptr;
+        if (cond->getType()->isIntegerTy(1)) {
+            cond = builder_->CreateZExt(cond, llvm::Type::getInt64Ty(*context_));
+        }
+        // Negate: assertFalse(x) == assert(!x)
+        cond = builder_->CreateICmpEQ(cond, llvm::ConstantInt::get(cond->getType(), 0));
+        cond = builder_->CreateZExt(cond, llvm::Type::getInt64Ty(*context_));
+        llvm::Value* msg = nullptr;
+        if (expr.arguments.size() >= 2) {
+            msg = emitExpr(*expr.arguments[1]);
+        } else {
+            msg = builder_->CreateGlobalStringPtr("assertFalse failed");
+        }
+        auto* file = builder_->CreateGlobalStringPtr(expr.location.file);
+        auto* line = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), expr.location.line);
+        builder_->CreateCall(runtimeAssert_, {cond, msg, file, line});
+        return nullptr;
+    }
+    if (identCallee->name == "assertEqual" && expr.arguments.size() >= 2) {
+        llvm::Value* expected = emitExpr(*expr.arguments[0]);
+        llvm::Value* actual = emitExpr(*expr.arguments[1]);
+        if (!expected || !actual) return nullptr;
+        llvm::Value* msg = nullptr;
+        if (expr.arguments.size() >= 3) {
+            msg = emitExpr(*expr.arguments[2]);
+        } else {
+            msg = builder_->CreateGlobalStringPtr("assertEqual failed");
+        }
+        auto* line = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), expr.location.line);
+        // Choose int or string version based on type
+        if (expected->getType()->isIntegerTy()) {
+            builder_->CreateCall(runtimeAssertEqualInt_, {expected, actual, msg, line});
+        } else {
+            builder_->CreateCall(runtimeAssertEqualStr_, {expected, actual, msg, line});
+        }
+        return nullptr;
+    }
+
+    // Built-in process execution functions
+    if (identCallee->name == "exec" && expr.arguments.size() >= 1) {
+        llvm::Value* cmd = emitExpr(*expr.arguments[0]);
+        if (!cmd) return nullptr;
+        return builder_->CreateCall(runtimeExec_, {cmd}, "exec.code");
+    }
+    if (identCallee->name == "execOutput" && expr.arguments.size() >= 1) {
+        llvm::Value* cmd = emitExpr(*expr.arguments[0]);
+        if (!cmd) return nullptr;
+        return builder_->CreateCall(runtimeExecOutput_, {cmd}, "exec.out");
+    }
+
+    // Built-in File I/O functions
+    if (identCallee->name == "readFile" && expr.arguments.size() >= 1) {
+        llvm::Value* path = emitExpr(*expr.arguments[0]);
+        if (!path) return nullptr;
+        return builder_->CreateCall(runtimeReadFile_, {path}, "file.read");
+    }
+    if (identCallee->name == "writeFile" && expr.arguments.size() >= 2) {
+        llvm::Value* path = emitExpr(*expr.arguments[0]);
+        llvm::Value* content = emitExpr(*expr.arguments[1]);
+        if (!path || !content) return nullptr;
+        auto* result = builder_->CreateCall(runtimeWriteFile_, {path, content}, "file.write");
+        return builder_->CreateICmpNE(result,
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), "file.write.bool");
+    }
+    if (identCallee->name == "appendFile" && expr.arguments.size() >= 2) {
+        llvm::Value* path = emitExpr(*expr.arguments[0]);
+        llvm::Value* content = emitExpr(*expr.arguments[1]);
+        if (!path || !content) return nullptr;
+        auto* result = builder_->CreateCall(runtimeAppendFile_, {path, content}, "file.append");
+        return builder_->CreateICmpNE(result,
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), "file.append.bool");
+    }
+    if (identCallee->name == "fileExists" && expr.arguments.size() >= 1) {
+        llvm::Value* path = emitExpr(*expr.arguments[0]);
+        if (!path) return nullptr;
+        auto* result = builder_->CreateCall(runtimeFileExists_, {path}, "file.exists");
+        return builder_->CreateICmpNE(result,
+            llvm::ConstantInt::get(llvm::Type::getInt32Ty(*context_), 0), "file.exists.bool");
+    }
+
     // Regular function call
     llvm::Function* calleeFunc = module_->getFunction(identCallee->name);
 
@@ -1959,6 +3200,68 @@ llvm::Value* CodeGen::emitMemberExpr(MemberExpr& expr) {
         llvm::Value* objVal = emitExpr(*expr.object);
         if (objVal && objVal->getType()->isPointerTy()) {
             return builder_->CreateCall(runtimeStrLen_, {objVal}, "str.len");
+        }
+    }
+
+    // TypeInfo properties (reflection)
+    if (expr.member == "name" || expr.member == "fields" || expr.member == "implements") {
+        if (auto* callExpr = dynamic_cast<CallExpr*>(expr.object.get())) {
+            if (auto* callIdent = dynamic_cast<IdentifierExpr*>(callExpr->callee.get())) {
+                if (callIdent->name == "typeof") {
+                    llvm::Value* tiPtr = emitExpr(*expr.object);
+                    if (tiPtr) {
+                        if (expr.member == "name") {
+                            return builder_->CreateCall(runtimeTypeInfoName_, {tiPtr}, "ti.name");
+                        }
+                        if (expr.member == "fields") {
+                            auto* outArr = builder_->CreateAlloca(arrayStructType_, nullptr, "ti.fields.arr");
+                            builder_->CreateCall(runtimeTypeInfoFields_, {tiPtr, outArr});
+                            return outArr;
+                        }
+                        if (expr.member == "implements") {
+                            auto* outArr = builder_->CreateAlloca(arrayStructType_, nullptr, "ti.impl.arr");
+                            builder_->CreateCall(runtimeTypeInfoImplements_, {tiPtr, outArr});
+                            return outArr;
+                        }
+                    }
+                }
+            }
+        }
+        // Also handle when typeof result is stored in a variable
+        if (auto* ident = dynamic_cast<IdentifierExpr*>(expr.object.get())) {
+            auto it = namedValues_.find(ident->name);
+            if (it != namedValues_.end()) {
+                llvm::Value* tiPtr = builder_->CreateLoad(
+                    llvm::PointerType::getUnqual(*context_), it->second, "ti.ptr");
+                if (expr.member == "name") {
+                    return builder_->CreateCall(runtimeTypeInfoName_, {tiPtr}, "ti.name");
+                }
+                if (expr.member == "fields") {
+                    auto* outArr = builder_->CreateAlloca(arrayStructType_, nullptr, "ti.fields.arr");
+                    builder_->CreateCall(runtimeTypeInfoFields_, {tiPtr, outArr});
+                    return outArr;
+                }
+                if (expr.member == "implements") {
+                    auto* outArr = builder_->CreateAlloca(arrayStructType_, nullptr, "ti.impl.arr");
+                    builder_->CreateCall(runtimeTypeInfoImplements_, {tiPtr, outArr});
+                    return outArr;
+                }
+            }
+        }
+    }
+
+    // Map/Set .size property
+    if (expr.member == "size") {
+        if (auto* ident = dynamic_cast<IdentifierExpr*>(expr.object.get())) {
+            auto it = namedValues_.find(ident->name);
+            if (it != namedValues_.end()) {
+                llvm::Value* ptr = builder_->CreateLoad(
+                    llvm::PointerType::getUnqual(*context_), it->second, "col.ptr");
+                if (varSetNames_.count(ident->name)) {
+                    return builder_->CreateCall(runtimeSetSize_, {ptr}, "set.size");
+                }
+                return builder_->CreateCall(runtimeMapSize_, {ptr}, "map.size");
+            }
         }
     }
 

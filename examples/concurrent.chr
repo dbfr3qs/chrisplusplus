@@ -1,0 +1,39 @@
+// Concurrent data structures and atomics example
+
+func main() -> Int {
+    // ConcurrentMap: thread-safe key-value store
+    var cm = ConcurrentMap();
+    cmapSet(cm, "counter", 0);
+    cmapSet(cm, "status", 1);
+    print(cmapGet(cm, "counter"));
+    print(cmapHas(cm, "status"));
+    print(cmapSize(cm));
+    cmapDelete(cm, "status");
+    print(cmapSize(cm));
+    cmapDestroy(cm);
+
+    // ConcurrentQueue: thread-safe FIFO queue
+    var q = ConcurrentQueue();
+    cqueueEnqueue(q, 10);
+    cqueueEnqueue(q, 20);
+    cqueueEnqueue(q, 30);
+    print(cqueueSize(q));
+    print(cqueueDequeue(q));
+    print(cqueueDequeue(q));
+    print(cqueueIsEmpty(q));
+    cqueueDestroy(q);
+
+    // Atomics: atomic integer operations
+    var counter = atomicCreate(0);
+    atomicAdd(counter, 5);
+    atomicAdd(counter, 3);
+    atomicSub(counter, 2);
+    print(atomicLoad(counter));
+    atomicStore(counter, 100);
+    print(atomicLoad(counter));
+    print(atomicCompareSwap(counter, 100, 200));
+    print(atomicLoad(counter));
+    atomicDestroy(counter);
+
+    return 0;
+}

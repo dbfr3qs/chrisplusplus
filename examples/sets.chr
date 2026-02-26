@@ -1,0 +1,27 @@
+// Set<T> collection example
+
+func main() -> Int {
+    var s = Set();
+
+    s.add("apple");
+    s.add("banana");
+    s.add("cherry");
+    s.add("apple");  // duplicate, should be ignored
+
+    print(s.size);
+
+    if s.has("banana") {
+        print("has banana");
+    }
+
+    s.remove("banana");
+    print(s.size);
+
+    if s.has("banana") {
+        print("still has banana");
+    } else {
+        print("banana removed");
+    }
+
+    return 0;
+}

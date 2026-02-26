@@ -82,9 +82,50 @@ Program Parser::parse() {
     return program;
 }
 
+// --- Annotations ---
+
+std::vector<Annotation> Parser::parseAnnotations() {
+    std::vector<Annotation> annotations;
+    while (check(TokenType::At)) {
+        Annotation ann;
+        ann.location = current().location;
+        advance(); // consume '@'
+        Token name = expect(TokenType::Identifier, "Expected annotation name after '@'");
+        ann.name = name.value;
+        // Optional arguments: @Name("arg1", "arg2")
+        if (match(TokenType::LeftParen)) {
+            if (!check(TokenType::RightParen)) {
+                do {
+                    if (check(TokenType::StringLiteral)) {
+                        ann.arguments.push_back(current().value);
+                        advance();
+                    } else if (check(TokenType::Identifier)) {
+                        ann.arguments.push_back(current().value);
+                        advance();
+                    } else if (check(TokenType::IntLiteral)) {
+                        ann.arguments.push_back(current().value);
+                        advance();
+                    } else {
+                        diagnostics_.error("E2001", "Expected annotation argument", current().location);
+                        break;
+                    }
+                } while (match(TokenType::Comma));
+            }
+            expect(TokenType::RightParen, "Expected ')' after annotation arguments");
+        }
+        annotations.push_back(std::move(ann));
+        skipComments();
+    }
+    return annotations;
+}
+
 StmtPtr Parser::parseDeclaration() {
     skipComments();
     if (isAtEnd()) return nullptr;
+
+    // Parse any leading annotations
+    auto annotations = parseAnnotations();
+    skipComments();
 
     if (check(TokenType::KwImport)) {
         return parseImportDecl();
@@ -99,33 +140,51 @@ StmtPtr Parser::parseDeclaration() {
             auto cls = parseClassDecl(isPublic);
             if (cls) {
                 auto* classDecl = dynamic_cast<ClassDecl*>(cls.get());
-                if (classDecl) classDecl->isShared = true;
+                if (classDecl) {
+                    classDecl->isShared = true;
+                    classDecl->annotations = std::move(annotations);
+                }
             }
             return cls;
         }
         if (check(TokenType::KwClass)) {
-            return parseClassDecl(isPublic);
+            auto cls = parseClassDecl(isPublic);
+            if (cls) cls->annotations = std::move(annotations);
+            return cls;
         }
         if (check(TokenType::KwAsync)) {
             advance(); // consume 'async'
             skipComments();
             auto func = parseFuncDecl();
-            if (func) func->isAsync = true;
+            if (func) {
+                func->isAsync = true;
+                func->annotations = std::move(annotations);
+            }
             return func;
         }
         if (check(TokenType::KwFunc)) {
             auto func = parseFuncDecl();
-            // TODO: store access modifier on FuncDecl
+            if (func) func->annotations = std::move(annotations);
             return func;
         }
         diagnostics_.error("E2001", "Expected 'class' or 'func' after access modifier", current().location);
         return nullptr;
     }
     if (check(TokenType::KwInterface)) {
-        return parseInterfaceDecl();
+        auto iface = parseInterfaceDecl();
+        if (iface) {
+            auto* ifaceDecl = dynamic_cast<InterfaceDecl*>(iface.get());
+            if (ifaceDecl) ifaceDecl->annotations = std::move(annotations);
+        }
+        return iface;
     }
     if (check(TokenType::KwEnum)) {
-        return parseEnumDecl();
+        auto en = parseEnumDecl();
+        if (en) {
+            auto* enumDecl = dynamic_cast<EnumDecl*>(en.get());
+            if (enumDecl) enumDecl->annotations = std::move(annotations);
+        }
+        return en;
     }
     if (check(TokenType::KwExtern)) {
         return parseExternFuncDecl();
@@ -136,22 +195,32 @@ StmtPtr Parser::parseDeclaration() {
         auto cls = parseClassDecl(false);
         if (cls) {
             auto* classDecl = dynamic_cast<ClassDecl*>(cls.get());
-            if (classDecl) classDecl->isShared = true;
+            if (classDecl) {
+                classDecl->isShared = true;
+                classDecl->annotations = std::move(annotations);
+            }
         }
         return cls;
     }
     if (check(TokenType::KwClass)) {
-        return parseClassDecl(false);
+        auto cls = parseClassDecl(false);
+        if (cls) cls->annotations = std::move(annotations);
+        return cls;
     }
     if (check(TokenType::KwAsync)) {
         advance(); // consume 'async'
         skipComments();
         auto func = parseFuncDecl();
-        if (func) func->isAsync = true;
+        if (func) {
+            func->isAsync = true;
+            func->annotations = std::move(annotations);
+        }
         return func;
     }
     if (check(TokenType::KwFunc)) {
-        return parseFuncDecl();
+        auto func = parseFuncDecl();
+        if (func) func->annotations = std::move(annotations);
+        return func;
     }
 
     // At top level, also allow statements for scripting style

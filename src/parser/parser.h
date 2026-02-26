@@ -67,6 +67,9 @@ private:
     ExprPtr parsePostfix();
     ExprPtr parsePrimary();
 
+    // Annotations
+    std::vector<Annotation> parseAnnotations();
+
     // Helpers
     ExprPtr parseStringInterpolation();
     TypeExprPtr parseTypeExpr();

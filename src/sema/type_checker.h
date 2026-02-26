@@ -65,6 +65,9 @@ private:
     void checkTryCatchStmt(TryCatchStmt& stmt);
     void checkUnsafeBlock(UnsafeBlock& stmt);
 
+    // Annotations
+    void validateAnnotations(const std::vector<Annotation>& annotations, const std::string& declKind, const SourceLocation& loc);
+
     // Helpers
     TypePtr resolveTypeAnnotation(TypeExpr& typeExpr);
     void registerBuiltins();
@@ -88,6 +91,7 @@ private:
     std::vector<TypePtr>* expectedLambdaParamTypes_ = nullptr; // propagated from call site for lambda inference
     bool inAsyncFunction_ = false; // true when checking inside an async function body
     bool inUnsafeBlock_ = false; // true when checking inside an unsafe block
+    std::unordered_map<std::string, std::string> deprecatedFunctions_; // name -> message
 };
 
 } // namespace chris

@@ -1,0 +1,17 @@
+// Process execution example
+
+func main() -> Int {
+    // Run a command and get exit code
+    let code = exec("echo 'Hello from shell'");
+    print(code);
+
+    // Capture command output
+    let output = execOutput("echo 'captured output'");
+    print(output);
+
+    // Get system info
+    let uname = execOutput("uname -s");
+    print(uname.trim());
+
+    return 0;
+}

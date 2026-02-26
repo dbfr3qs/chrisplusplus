@@ -2,6 +2,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
 
 #include "llvm/IR/IRBuilder.h"
@@ -121,6 +122,7 @@ private:
     llvm::Value* thisPtr_ = nullptr; // current 'this' pointer in method
     std::string currentClassName_; // name of class being emitted (for member resolution)
     std::unordered_map<std::string, std::string> varClassMap_; // variable name -> class name
+    std::unordered_set<std::string> varSetNames_; // variable names that hold Set<T>
 
     // Enum support
     struct EnumInfo {
@@ -189,12 +191,148 @@ private:
     llvm::Function* runtimeMutexUnlock_ = nullptr;
     llvm::Function* runtimeMutexDestroy_ = nullptr;
 
+    // Reflection runtime functions
+    llvm::Function* runtimeTypeInfoName_ = nullptr;
+    llvm::Function* runtimeTypeInfoFields_ = nullptr;
+    llvm::Function* runtimeTypeInfoImplements_ = nullptr;
+    llvm::StructType* typeInfoStructType_ = nullptr;
+    std::unordered_map<std::string, llvm::GlobalVariable*> typeInfoGlobals_; // className -> global TypeInfo
+
+    // Process execution runtime functions
+    llvm::Function* runtimeExec_ = nullptr;
+    llvm::Function* runtimeExecOutput_ = nullptr;
+
+    // File I/O runtime functions
+    llvm::Function* runtimeReadFile_ = nullptr;
+    llvm::Function* runtimeWriteFile_ = nullptr;
+    llvm::Function* runtimeAppendFile_ = nullptr;
+    llvm::Function* runtimeFileExists_ = nullptr;
+
+    // Map runtime functions
+    llvm::Function* runtimeMapCreate_ = nullptr;
+    llvm::Function* runtimeMapSet_ = nullptr;
+    llvm::Function* runtimeMapGet_ = nullptr;
+    llvm::Function* runtimeMapHas_ = nullptr;
+    llvm::Function* runtimeMapDelete_ = nullptr;
+    llvm::Function* runtimeMapSize_ = nullptr;
+    llvm::Function* runtimeMapDestroy_ = nullptr;
+    llvm::Function* runtimeMapKeys_ = nullptr;
+
+    // Networking runtime functions (TCP)
+    llvm::Function* runtimeTcpConnect_ = nullptr;
+    llvm::Function* runtimeTcpListen_ = nullptr;
+    llvm::Function* runtimeTcpAccept_ = nullptr;
+    llvm::Function* runtimeTcpSend_ = nullptr;
+    llvm::Function* runtimeTcpRecv_ = nullptr;
+    llvm::Function* runtimeTcpClose_ = nullptr;
+
+    // Networking runtime functions (UDP)
+    llvm::Function* runtimeUdpCreate_ = nullptr;
+    llvm::Function* runtimeUdpBind_ = nullptr;
+    llvm::Function* runtimeUdpSendTo_ = nullptr;
+    llvm::Function* runtimeUdpRecvFrom_ = nullptr;
+    llvm::Function* runtimeUdpClose_ = nullptr;
+
+    // DNS runtime function
+    llvm::Function* runtimeDnsLookup_ = nullptr;
+
+    // ConcurrentMap runtime functions
+    llvm::Function* runtimeCmapCreate_ = nullptr;
+    llvm::Function* runtimeCmapSet_ = nullptr;
+    llvm::Function* runtimeCmapGet_ = nullptr;
+    llvm::Function* runtimeCmapHas_ = nullptr;
+    llvm::Function* runtimeCmapDelete_ = nullptr;
+    llvm::Function* runtimeCmapSize_ = nullptr;
+    llvm::Function* runtimeCmapDestroy_ = nullptr;
+
+    // ConcurrentQueue runtime functions
+    llvm::Function* runtimeCqueueCreate_ = nullptr;
+    llvm::Function* runtimeCqueueEnqueue_ = nullptr;
+    llvm::Function* runtimeCqueueDequeue_ = nullptr;
+    llvm::Function* runtimeCqueueSize_ = nullptr;
+    llvm::Function* runtimeCqueueIsEmpty_ = nullptr;
+    llvm::Function* runtimeCqueueDestroy_ = nullptr;
+
+    // Atomic runtime functions
+    llvm::Function* runtimeAtomicCreate_ = nullptr;
+    llvm::Function* runtimeAtomicLoad_ = nullptr;
+    llvm::Function* runtimeAtomicStore_ = nullptr;
+    llvm::Function* runtimeAtomicAdd_ = nullptr;
+    llvm::Function* runtimeAtomicSub_ = nullptr;
+    llvm::Function* runtimeAtomicCompareSwap_ = nullptr;
+    llvm::Function* runtimeAtomicDestroy_ = nullptr;
+
+    // HTTP runtime functions (client)
+    llvm::Function* runtimeHttpGet_ = nullptr;
+    llvm::Function* runtimeHttpPost_ = nullptr;
+
+    // HTTP runtime functions (server)
+    llvm::Function* runtimeHttpServerCreate_ = nullptr;
+    llvm::Function* runtimeHttpServerAccept_ = nullptr;
+    llvm::Function* runtimeHttpRequestMethod_ = nullptr;
+    llvm::Function* runtimeHttpRequestPath_ = nullptr;
+    llvm::Function* runtimeHttpRequestBody_ = nullptr;
+    llvm::Function* runtimeHttpRespond_ = nullptr;
+    llvm::Function* runtimeHttpServerClose_ = nullptr;
+
+    // Set runtime functions
+    llvm::Function* runtimeSetCreate_ = nullptr;
+    llvm::Function* runtimeSetAdd_ = nullptr;
+    llvm::Function* runtimeSetHas_ = nullptr;
+    llvm::Function* runtimeSetRemove_ = nullptr;
+    llvm::Function* runtimeSetSize_ = nullptr;
+    llvm::Function* runtimeSetClear_ = nullptr;
+    llvm::Function* runtimeSetValues_ = nullptr;
+    llvm::Function* runtimeSetDestroy_ = nullptr;
+
     // Channel runtime functions
     llvm::Function* runtimeChannelCreate_ = nullptr;
     llvm::Function* runtimeChannelSend_ = nullptr;
     llvm::Function* runtimeChannelRecv_ = nullptr;
     llvm::Function* runtimeChannelClose_ = nullptr;
     llvm::Function* runtimeChannelDestroy_ = nullptr;
+
+    // Math runtime functions (Int)
+    llvm::Function* runtimeMathAbs_ = nullptr;
+    llvm::Function* runtimeMathMin_ = nullptr;
+    llvm::Function* runtimeMathMax_ = nullptr;
+    llvm::Function* runtimeMathRandom_ = nullptr;
+
+    // Math runtime functions (Float)
+    llvm::Function* runtimeMathSqrt_ = nullptr;
+    llvm::Function* runtimeMathPow_ = nullptr;
+    llvm::Function* runtimeMathFloor_ = nullptr;
+    llvm::Function* runtimeMathCeil_ = nullptr;
+    llvm::Function* runtimeMathRound_ = nullptr;
+    llvm::Function* runtimeMathLog_ = nullptr;
+    llvm::Function* runtimeMathSin_ = nullptr;
+    llvm::Function* runtimeMathCos_ = nullptr;
+    llvm::Function* runtimeMathTan_ = nullptr;
+    llvm::Function* runtimeMathFabs_ = nullptr;
+    llvm::Function* runtimeMathFmin_ = nullptr;
+    llvm::Function* runtimeMathFmax_ = nullptr;
+
+    // Stdin runtime functions
+    llvm::Function* runtimeReadLine_ = nullptr;
+
+    // JSON runtime functions
+    llvm::Function* runtimeJsonParse_ = nullptr;
+    llvm::Function* runtimeJsonGet_ = nullptr;
+    llvm::Function* runtimeJsonGetInt_ = nullptr;
+    llvm::Function* runtimeJsonGetBool_ = nullptr;
+    llvm::Function* runtimeJsonGetFloat_ = nullptr;
+    llvm::Function* runtimeJsonGetArray_ = nullptr;
+    llvm::Function* runtimeJsonGetObject_ = nullptr;
+    llvm::Function* runtimeJsonArrayLength_ = nullptr;
+    llvm::Function* runtimeJsonArrayGet_ = nullptr;
+    llvm::Function* runtimeJsonStringify_ = nullptr;
+
+    // Test framework runtime functions
+    llvm::Function* runtimeAssert_ = nullptr;
+    llvm::Function* runtimeAssertEqualInt_ = nullptr;
+    llvm::Function* runtimeAssertEqualStr_ = nullptr;
+    llvm::Function* runtimeTestSummary_ = nullptr;
+    llvm::Function* runtimeTestExitCode_ = nullptr;
 };
 
 } // namespace chris

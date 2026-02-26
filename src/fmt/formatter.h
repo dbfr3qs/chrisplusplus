@@ -51,6 +51,7 @@ private:
     std::string ind(int level) const;
     std::string formatParams(const std::vector<Parameter>& params);
     std::string formatTypeExpr(const TypeExpr& type);
+    std::string formatAnnotations(const std::vector<Annotation>& annotations, int indent);
 
     int indentWidth_;
 };
