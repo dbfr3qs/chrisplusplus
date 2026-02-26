@@ -355,6 +355,7 @@ struct InterfaceDecl : Stmt {
 struct EnumVariant {
     std::string name;
     TypeExprPtr associatedType; // nullptr for simple variants (e.g. Red), non-null for Ok(Int)
+    SourceLocation location;
 };
 
 struct EnumDecl : Stmt {

@@ -113,3 +113,32 @@ endif()
 if(NOT TARGET chris_runtime)
     add_library(chris_runtime STATIC runtime/runtime.c)
 endif()
+
+# Compiler library (always build — used by LSP and tests)
+if(NOT TARGET chris_lib)
+    set(CHRIS_LIB_SOURCES
+        src/common/source_location.cpp
+        src/common/diagnostic.cpp
+        src/common/source_file.cpp
+        src/lexer/token.cpp
+        src/lexer/lexer.cpp
+        src/ast/ast.cpp
+        src/parser/parser.cpp
+        src/sema/types.cpp
+        src/sema/symbol_table.cpp
+        src/sema/type_checker.cpp
+        src/codegen/codegen.cpp
+        src/fmt/formatter.cpp
+    )
+    add_library(chris_lib STATIC ${CHRIS_LIB_SOURCES})
+    target_include_directories(chris_lib PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(chris_lib ${LLVM_LIBS})
+endif()
+
+# LSP server
+add_executable(chris-lsp
+    src/lsp/lsp_main.cpp
+    src/lsp/lsp_server.cpp
+)
+target_link_libraries(chris-lsp chris_lib ${LLVM_LIBS})
+target_include_directories(chris-lsp PRIVATE ${CMAKE_SOURCE_DIR}/src)

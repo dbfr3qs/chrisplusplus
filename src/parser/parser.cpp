@@ -316,6 +316,7 @@ std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
         // Check for associated value type: Ok(Int)
         EnumVariant variant;
         variant.name = caseName.value;
+        variant.location = caseName.location;
         if (match(TokenType::LeftParen)) {
             variant.associatedType = parseTypeExpr();
             expect(TokenType::RightParen, "Expected ')' after associated type");
