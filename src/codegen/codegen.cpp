@@ -751,6 +751,53 @@ void CodeGen::declareRuntimeFunctions() {
     auto* testExitCodeTy = llvm::FunctionType::get(i64Ty, {}, false);
     runtimeTestExitCode_ = llvm::Function::Create(testExitCodeTy, llvm::Function::ExternalLinkage,
                                                     "chris_assert_exit_code", module_.get());
+
+    // --- GC runtime functions ---
+
+    // chris_gc_init() -> void
+    auto* gcInitTy = llvm::FunctionType::get(voidTy, {}, false);
+    runtimeGcInit_ = llvm::Function::Create(gcInitTy, llvm::Function::ExternalLinkage,
+                                             "chris_gc_init", module_.get());
+
+    // chris_gc_alloc(i64 size, i8 type) -> ptr
+    auto* gcAllocTy = llvm::FunctionType::get(i8PtrTy, {i64Ty, llvm::Type::getInt8Ty(*context_)}, false);
+    runtimeGcAlloc_ = llvm::Function::Create(gcAllocTy, llvm::Function::ExternalLinkage,
+                                              "chris_gc_alloc", module_.get());
+
+    // chris_gc_alloc_with_finalizer(i64 size, i8 type, ptr finalizer) -> ptr
+    auto* gcAllocFinTy = llvm::FunctionType::get(i8PtrTy, {i64Ty, llvm::Type::getInt8Ty(*context_), i8PtrTy}, false);
+    runtimeGcAllocFinalizer_ = llvm::Function::Create(gcAllocFinTy, llvm::Function::ExternalLinkage,
+                                                       "chris_gc_alloc_with_finalizer", module_.get());
+
+    // chris_gc_set_num_pointers(ptr, i16 num_pointers) -> void
+    auto* gcSetNumPtrsTy = llvm::FunctionType::get(voidTy, {i8PtrTy, llvm::Type::getInt16Ty(*context_)}, false);
+    runtimeGcSetNumPointers_ = llvm::Function::Create(gcSetNumPtrsTy, llvm::Function::ExternalLinkage,
+                                                       "chris_gc_set_num_pointers", module_.get());
+
+    // chris_gc_collect() -> void
+    auto* gcCollectTy = llvm::FunctionType::get(voidTy, {}, false);
+    runtimeGcCollect_ = llvm::Function::Create(gcCollectTy, llvm::Function::ExternalLinkage,
+                                                "chris_gc_collect", module_.get());
+
+    // chris_gc_shutdown() -> void
+    auto* gcShutdownTy = llvm::FunctionType::get(voidTy, {}, false);
+    runtimeGcShutdown_ = llvm::Function::Create(gcShutdownTy, llvm::Function::ExternalLinkage,
+                                                  "chris_gc_shutdown", module_.get());
+
+    // chris_gc_push_root(ptr* root) -> void
+    auto* gcPushRootTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeGcPushRoot_ = llvm::Function::Create(gcPushRootTy, llvm::Function::ExternalLinkage,
+                                                  "chris_gc_push_root", module_.get());
+
+    // chris_gc_pop_root() -> void
+    auto* gcPopRootTy = llvm::FunctionType::get(voidTy, {}, false);
+    runtimeGcPopRoot_ = llvm::Function::Create(gcPopRootTy, llvm::Function::ExternalLinkage,
+                                                "chris_gc_pop_root", module_.get());
+
+    // chris_gc_pop_roots(i64 n) -> void
+    auto* gcPopRootsTy = llvm::FunctionType::get(voidTy, {i64Ty}, false);
+    runtimeGcPopRoots_ = llvm::Function::Create(gcPopRootsTy, llvm::Function::ExternalLinkage,
+                                                  "chris_gc_pop_roots", module_.get());
 }
 
 bool CodeGen::generate(Program& program,
@@ -1087,13 +1134,12 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
         auto* entryBB = llvm::BasicBlock::Create(*context_, "entry", llvmFunc);
         builder_->SetInsertPoint(entryBB);
 
-        // Pack arguments into an i64 array on the heap
+        // Pack arguments into an i64 array on the heap (GC-managed)
         llvm::Value* argsPack = nullptr;
         if (!func.parameters.empty()) {
-            auto mallocFn = module_->getOrInsertFunction("malloc",
-                llvm::FunctionType::get(i8PtrTy, {i64Ty}, false));
             auto* allocSize = llvm::ConstantInt::get(i64Ty, func.parameters.size() * 8);
-            auto* rawMem = builder_->CreateCall(mallocFn, {allocSize}, "args.mem");
+            auto* typeTag = llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context_), 2); // GC_ARRAY
+            auto* rawMem = builder_->CreateCall(runtimeGcAlloc_, {allocSize, typeTag}, "args.mem");
             argsPack = rawMem;
 
             size_t idx = 0;
@@ -1138,6 +1184,12 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
     auto* bb = llvm::BasicBlock::Create(*context_, "entry", llvmFunc);
     builder_->SetInsertPoint(bb);
 
+    // If this is main(), initialize the GC
+    bool isMain = (func.name == "main");
+    if (isMain) {
+        builder_->CreateCall(runtimeGcInit_, {});
+    }
+
     // Save old named values and create new scope
     auto oldNamedValues = namedValues_;
     namedValues_.clear();
@@ -1177,6 +1229,9 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
     // If the function returns void and the last block doesn't have a terminator, add ret void
     auto* currentBlock = builder_->GetInsertBlock();
     if (currentBlock && !currentBlock->getTerminator()) {
+        if (isMain) {
+            builder_->CreateCall(runtimeGcShutdown_, {});
+        }
         if (llvmFunc->getReturnType()->isVoidTy()) {
             builder_->CreateRetVoid();
         } else {
@@ -2231,16 +2286,11 @@ llvm::Value* CodeGen::emitCallExpr(CallExpr& expr) {
                 if (isConstructor) {
                     auto& info = classInfos_[candidateName];
                     auto* structTy = info.structType;
-                    auto* mallocFn = module_->getOrInsertFunction("malloc",
-                        llvm::FunctionType::get(
-                            llvm::PointerType::getUnqual(*context_),
-                            {llvm::Type::getInt64Ty(*context_)},
-                            false)).getCallee();
                     const auto& dataLayout = module_->getDataLayout();
                     uint64_t structSize = dataLayout.getTypeAllocSize(structTy);
                     auto* sizeVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), structSize);
-                    thisArg = builder_->CreateCall(
-                        llvm::cast<llvm::Function>(mallocFn), {sizeVal}, "obj.alloc");
+                    auto* typeTag = llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context_), 1); // GC_OBJECT
+                    thisArg = builder_->CreateCall(runtimeGcAlloc_, {sizeVal, typeTag}, "obj.alloc");
                 } else {
                     thisArg = llvm::ConstantPointerNull::get(
                         llvm::PointerType::getUnqual(*context_));
@@ -3125,19 +3175,29 @@ llvm::Value* CodeGen::emitConstructExpr(ConstructExpr& expr) {
     auto& info = it->second;
     auto* structTy = info.structType;
 
-    // Allocate on heap using malloc
-    auto* mallocFn = module_->getOrInsertFunction("malloc",
-        llvm::FunctionType::get(
-            llvm::PointerType::getUnqual(*context_),
-            {llvm::Type::getInt64Ty(*context_)},
-            false)).getCallee();
-
+    // Allocate on heap using GC
     const auto& dataLayout = module_->getDataLayout();
     uint64_t structSize = dataLayout.getTypeAllocSize(structTy);
 
     auto* sizeVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), structSize);
-    auto* rawPtr = builder_->CreateCall(
-        llvm::cast<llvm::Function>(mallocFn), {sizeVal}, "obj");
+    auto* typeTag = llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context_), 1); // GC_OBJECT
+    auto* rawPtr = builder_->CreateCall(runtimeGcAlloc_, {sizeVal, typeTag}, "obj");
+
+    // Tell GC how many pointer-typed fields this object has (for mark traversal)
+    uint16_t ptrFieldCount = 0;
+    for (const auto& fieldName : info.fieldNames) {
+        int idx = getFieldIndex(expr.className, fieldName);
+        if (idx >= 0) {
+            auto* fieldTy = structTy->getElementType(idx);
+            if (fieldTy->isPointerTy()) ptrFieldCount++;
+        }
+    }
+    if (ptrFieldCount > 0) {
+        builder_->CreateCall(runtimeGcSetNumPointers_, {
+            rawPtr,
+            llvm::ConstantInt::get(llvm::Type::getInt16Ty(*context_), ptrFieldCount)
+        });
+    }
 
     // Initialize mutex for shared classes
     if (info.isShared) {

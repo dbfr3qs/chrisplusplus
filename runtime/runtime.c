@@ -6,6 +6,7 @@
 #include <math.h>
 #include <time.h>
 #include <pthread.h>
+#include "gc.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -64,7 +65,7 @@ const char* chris_strcat(const char* a, const char* b) {
     if (!b) b = "";
     size_t len_a = strlen(a);
     size_t len_b = strlen(b);
-    char* result = (char*)malloc(len_a + len_b + 1);
+    char* result = (char*)chris_gc_alloc(len_a + len_b + 1, GC_STRING);
     memcpy(result, a, len_a);
     memcpy(result + len_a, b, len_b);
     result[len_a + len_b] = '\0';
@@ -72,20 +73,20 @@ const char* chris_strcat(const char* a, const char* b) {
 }
 
 const char* chris_char_to_str(char c) {
-    char* buf = (char*)malloc(2);
+    char* buf = (char*)chris_gc_alloc(2, GC_STRING);
     buf[0] = c;
     buf[1] = '\0';
     return buf;
 }
 
 const char* chris_int_to_str(long long val) {
-    char* buf = (char*)malloc(32);
+    char* buf = (char*)chris_gc_alloc(32, GC_STRING);
     snprintf(buf, 32, "%lld", val);
     return buf;
 }
 
 const char* chris_float_to_str(double val) {
-    char* buf = (char*)malloc(64);
+    char* buf = (char*)chris_gc_alloc(64, GC_STRING);
     snprintf(buf, 64, "%g", val);
     return buf;
 }
@@ -96,7 +97,7 @@ const char* chris_bool_to_str(int val) {
 
 // Array support
 void* chris_array_alloc(long long elem_size, long long count) {
-    return malloc((size_t)(elem_size * count));
+    return chris_gc_alloc((size_t)(elem_size * count), GC_ARRAY);
 }
 
 void chris_array_bounds_check(long long index, long long length) {
@@ -156,7 +157,7 @@ const char* chris_str_substring(const char* str, long long start, long long end)
     if (end < start) end = start;
     if ((size_t)end > len) end = (long long)len;
     size_t sublen = (size_t)(end - start);
-    char* result = (char*)malloc(sublen + 1);
+    char* result = (char*)chris_gc_alloc(sublen + 1, GC_STRING);
     memcpy(result, str + start, sublen);
     result[sublen] = '\0';
     return result;
@@ -174,7 +175,7 @@ const char* chris_str_replace(const char* str, const char* old_s, const char* ne
     while ((p = strstr(p, old_s)) != NULL) { count++; p += old_len; }
 
     size_t result_len = strlen(str) + count * ((long long)new_len - (long long)old_len);
-    char* result = (char*)malloc(result_len + 1);
+    char* result = (char*)chris_gc_alloc(result_len + 1, GC_STRING);
     char* dst = result;
     p = str;
     while (*p) {
@@ -195,7 +196,7 @@ const char* chris_str_trim(const char* str) {
     while (*str && isspace((unsigned char)*str)) str++;
     size_t len = strlen(str);
     while (len > 0 && isspace((unsigned char)str[len - 1])) len--;
-    char* result = (char*)malloc(len + 1);
+    char* result = (char*)chris_gc_alloc(len + 1, GC_STRING);
     memcpy(result, str, len);
     result[len] = '\0';
     return result;
@@ -204,7 +205,7 @@ const char* chris_str_trim(const char* str) {
 const char* chris_str_to_upper(const char* str) {
     if (!str) return "";
     size_t len = strlen(str);
-    char* result = (char*)malloc(len + 1);
+    char* result = (char*)chris_gc_alloc(len + 1, GC_STRING);
     for (size_t i = 0; i < len; i++) result[i] = (char)toupper((unsigned char)str[i]);
     result[len] = '\0';
     return result;
@@ -213,7 +214,7 @@ const char* chris_str_to_upper(const char* str) {
 const char* chris_str_to_lower(const char* str) {
     if (!str) return "";
     size_t len = strlen(str);
-    char* result = (char*)malloc(len + 1);
+    char* result = (char*)chris_gc_alloc(len + 1, GC_STRING);
     for (size_t i = 0; i < len; i++) result[i] = (char)tolower((unsigned char)str[i]);
     result[len] = '\0';
     return result;
@@ -221,7 +222,7 @@ const char* chris_str_to_lower(const char* str) {
 
 const char* chris_str_char_at(const char* str, long long index) {
     if (!str || index < 0 || (size_t)index >= strlen(str)) return "";
-    char* result = (char*)malloc(2);
+    char* result = (char*)chris_gc_alloc(2, GC_STRING);
     result[0] = str[index];
     result[1] = '\0';
     return result;
@@ -233,8 +234,10 @@ typedef struct { long long length; void* data; } ChrisArray;
 // Array methods
 void chris_array_push(ChrisArray* arr, long long elem_size, long long value) {
     long long new_len = arr->length + 1;
-    void* new_data = realloc(arr->data, (size_t)(elem_size * new_len));
-    if (!new_data) { fprintf(stderr, "Out of memory in array push\n"); exit(1); }
+    void* new_data = chris_gc_alloc((size_t)(elem_size * new_len), GC_ARRAY);
+    if (arr->data && arr->length > 0) {
+        memcpy(new_data, arr->data, (size_t)(elem_size * arr->length));
+    }
     arr->data = new_data;
     // Store value at the end
     memcpy((char*)arr->data + elem_size * arr->length, &value, (size_t)elem_size);
@@ -266,7 +269,7 @@ void chris_array_reverse(ChrisArray* arr, long long elem_size) {
 
 const char* chris_array_join(ChrisArray* arr, const char* sep) {
     if (!arr || arr->length == 0) {
-        char* empty = (char*)malloc(1);
+        char* empty = (char*)chris_gc_alloc(1, GC_STRING);
         empty[0] = '\0';
         return empty;
     }
@@ -278,7 +281,7 @@ const char* chris_array_join(ChrisArray* arr, const char* sep) {
         if (strings[i]) total += strlen(strings[i]);
         if (i < arr->length - 1) total += sep_len;
     }
-    char* result = (char*)malloc(total + 1);
+    char* result = (char*)chris_gc_alloc(total + 1, GC_STRING);
     char* dst = result;
     for (long long i = 0; i < arr->length; i++) {
         if (strings[i]) {
@@ -302,7 +305,7 @@ typedef void (*ForEachCallback)(long long);
 
 void chris_array_map(ChrisArray* arr, long long elem_size, MapCallback cb, ChrisArray* out) {
     out->length = arr->length;
-    out->data = malloc((size_t)(elem_size * arr->length));
+    out->data = chris_gc_alloc((size_t)(elem_size * arr->length), GC_ARRAY);
     long long* src = (long long*)arr->data;
     long long* dst = (long long*)out->data;
     for (long long i = 0; i < arr->length; i++) {
@@ -313,7 +316,7 @@ void chris_array_map(ChrisArray* arr, long long elem_size, MapCallback cb, Chris
 void chris_array_filter(ChrisArray* arr, long long elem_size, FilterCallback cb, ChrisArray* out) {
     // Allocate max possible size
     long long* src = (long long*)arr->data;
-    long long* tmp = (long long*)malloc((size_t)(elem_size * arr->length));
+    long long* tmp = (long long*)chris_gc_alloc((size_t)(elem_size * arr->length), GC_ARRAY);
     long long count = 0;
     for (long long i = 0; i < arr->length; i++) {
         if (cb(src[i])) {
@@ -340,9 +343,9 @@ void chris_str_split(const char* str, const char* delim, ChrisArray* out) {
     if (dlen == 0) {
         // Split into individual characters
         size_t slen = strlen(str);
-        const char** parts = (const char**)malloc(sizeof(const char*) * slen);
+        const char** parts = (const char**)chris_gc_alloc(sizeof(const char*) * slen, GC_ARRAY);
         for (size_t i = 0; i < slen; i++) {
-            char* ch = (char*)malloc(2);
+            char* ch = (char*)chris_gc_alloc(2, GC_STRING);
             ch[0] = str[i];
             ch[1] = '\0';
             parts[i] = ch;
@@ -357,12 +360,12 @@ void chris_str_split(const char* str, const char* delim, ChrisArray* out) {
     const char* p = str;
     while ((p = strstr(p, delim)) != NULL) { count++; p += dlen; }
 
-    const char** parts = (const char**)malloc(sizeof(const char*) * count);
+    const char** parts = (const char**)chris_gc_alloc(sizeof(const char*) * count, GC_ARRAY);
     p = str;
     for (int i = 0; i < count; i++) {
         const char* next = strstr(p, delim);
         size_t partlen = next ? (size_t)(next - p) : strlen(p);
-        char* part = (char*)malloc(partlen + 1);
+        char* part = (char*)chris_gc_alloc(partlen + 1, GC_STRING);
         memcpy(part, p, partlen);
         part[partlen] = '\0';
         parts[i] = part;
@@ -680,7 +683,7 @@ void chris_map_keys(chris_map* m, ChrisArray* out) {
         return;
     }
     out->length = m->size;
-    out->data = malloc(sizeof(long long) * m->size);
+    out->data = chris_gc_alloc(sizeof(long long) * m->size, GC_ARRAY);
     long long* keys = (long long*)out->data;
     int idx = 0;
     for (int i = 0; i < m->capacity; i++) {
@@ -813,7 +816,7 @@ void chris_set_values(chris_set* s, ChrisArray* out) {
         return;
     }
     out->length = s->size;
-    out->data = malloc(sizeof(long long) * s->size);
+    out->data = chris_gc_alloc(sizeof(long long) * s->size, GC_ARRAY);
     long long* vals = (long long*)out->data;
     int idx = 0;
     for (int i = 0; i < s->capacity; i++) {
@@ -862,7 +865,7 @@ const char* chris_typeinfo_name(ChrisTypeInfo* info) {
 void chris_typeinfo_fields(ChrisTypeInfo* info, ChrisArray* out) {
     if (!info) { out->length = 0; out->data = NULL; return; }
     out->length = info->num_fields;
-    out->data = malloc(sizeof(long long) * info->num_fields);
+    out->data = chris_gc_alloc(sizeof(long long) * info->num_fields, GC_ARRAY);
     long long* arr = (long long*)out->data;
     for (long long i = 0; i < info->num_fields; i++) {
         arr[i] = (long long)info->fields[i];
@@ -873,7 +876,7 @@ void chris_typeinfo_fields(ChrisTypeInfo* info, ChrisArray* out) {
 void chris_typeinfo_implements(ChrisTypeInfo* info, ChrisArray* out) {
     if (!info) { out->length = 0; out->data = NULL; return; }
     out->length = info->num_implements;
-    out->data = malloc(sizeof(long long) * info->num_implements);
+    out->data = chris_gc_alloc(sizeof(long long) * info->num_implements, GC_ARRAY);
     long long* arr = (long long*)out->data;
     for (long long i = 0; i < info->num_implements; i++) {
         arr[i] = (long long)info->implements[i];
@@ -917,9 +920,13 @@ const char* chris_exec_output(const char* command) {
         memcpy(buf + length, tmp, n);
         length += n;
     }
-    buf[length] = '\0';
     pclose(fp);
-    return buf;
+    // Copy into GC-managed string
+    char* result = (char*)chris_gc_alloc(length + 1, GC_STRING);
+    memcpy(result, buf, length);
+    result[length] = '\0';
+    free(buf);
+    return result;
 }
 
 // ============================================================================
@@ -935,8 +942,7 @@ const char* chris_read_file(const char* path) {
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
     if (size < 0) { fclose(f); return ""; }
-    char* buf = (char*)malloc((size_t)size + 1);
-    if (!buf) { fclose(f); return ""; }
+    char* buf = (char*)chris_gc_alloc((size_t)size + 1, GC_STRING);
     size_t read = fread(buf, 1, (size_t)size, f);
     buf[read] = '\0';
     fclose(f);
@@ -1032,11 +1038,8 @@ static void* chris_async_thread_entry(void* arg) {
     pthread_cond_signal(&f->cond);
     pthread_mutex_unlock(&f->mutex);
 
-    // Free the packed args (allocated by codegen via malloc)
-    if (f->args) {
-        free(f->args);
-        f->args = NULL;
-    }
+    // Args are GC-managed, no need to free manually
+    f->args = NULL;
 
     return NULL;
 }
@@ -1199,7 +1202,7 @@ long long chris_tcp_send(long long fd, const char* data) {
 // TCP: receive up to maxBytes from socket, returns heap-allocated string
 const char* chris_tcp_recv(long long fd, long long maxBytes) {
     if (maxBytes <= 0) maxBytes = 4096;
-    char* buf = (char*)malloc(maxBytes + 1);
+    char* buf = (char*)chris_gc_alloc(maxBytes + 1, GC_STRING);
     ssize_t n = recv((int)fd, buf, maxBytes, 0);
     if (n <= 0) {
         buf[0] = '\0';
@@ -1255,7 +1258,7 @@ long long chris_udp_send_to(long long fd, const char* host, long long port, cons
 // UDP: receive data, returns heap-allocated string
 const char* chris_udp_recv_from(long long fd, long long maxBytes) {
     if (maxBytes <= 0) maxBytes = 4096;
-    char* buf = (char*)malloc(maxBytes + 1);
+    char* buf = (char*)chris_gc_alloc(maxBytes + 1, GC_STRING);
     struct sockaddr_in srcAddr;
     socklen_t srcLen = sizeof(srcAddr);
     ssize_t n = recvfrom((int)fd, buf, maxBytes, 0, (struct sockaddr*)&srcAddr, &srcLen);
@@ -1285,7 +1288,7 @@ const char* chris_dns_lookup(const char* hostname) {
     struct sockaddr_in* addr = (struct sockaddr_in*)res->ai_addr;
     const char* ip = inet_ntoa(addr->sin_addr);
     size_t len = strlen(ip);
-    char* result = (char*)malloc(len + 1);
+    char* result = (char*)chris_gc_alloc(len + 1, GC_STRING);
     memcpy(result, ip, len + 1);
     freeaddrinfo(res);
     return result;
@@ -1341,7 +1344,7 @@ static int chris_http_parse_url(const char* url, char* host, int hostLen,
 
 // Internal helper: read full HTTP response body from socket
 static const char* chris_http_read_response(int fd) {
-    // Read headers + body
+    // Read headers + body into temp buffer (uses malloc+realloc for dynamic growth)
     size_t bufSize = 8192;
     size_t totalRead = 0;
     char* buf = (char*)malloc(bufSize);
@@ -1359,16 +1362,12 @@ static const char* chris_http_read_response(int fd) {
 
     // Find body after \r\n\r\n
     char* body = strstr(buf, "\r\n\r\n");
-    if (body) {
-        body += 4;
-        size_t bodyLen = strlen(body);
-        char* result = (char*)malloc(bodyLen + 1);
-        memcpy(result, body, bodyLen + 1);
-        free(buf);
-        return result;
-    }
-    // No header separator found, return whole response
-    return buf;
+    const char* src = body ? body + 4 : buf;
+    size_t srcLen = strlen(src);
+    char* result = (char*)chris_gc_alloc(srcLen + 1, GC_STRING);
+    memcpy(result, src, srcLen + 1);
+    free(buf);
+    return result;
 }
 
 // HTTP GET: returns response body as heap-allocated string
@@ -1472,11 +1471,11 @@ long long chris_http_server_accept(long long serverFd) {
     if (bodyStart) {
         bodyStart += 4;
         size_t bLen = strlen(bodyStart);
-        req->body = (char*)malloc(bLen + 1);
+        req->body = (char*)chris_gc_alloc(bLen + 1, GC_STRING);
         memcpy(req->body, bodyStart, bLen + 1);
         req->bodyLen = bLen;
     } else {
-        req->body = (char*)calloc(1, 1);
+        req->body = (char*)chris_gc_alloc(1, GC_STRING);
         req->bodyLen = 0;
     }
 
@@ -1488,7 +1487,7 @@ const char* chris_http_request_method(long long handle) {
     if (!handle) return "";
     chris_http_request* req = (chris_http_request*)(uintptr_t)handle;
     size_t len = strlen(req->method);
-    char* result = (char*)malloc(len + 1);
+    char* result = (char*)chris_gc_alloc(len + 1, GC_STRING);
     memcpy(result, req->method, len + 1);
     return result;
 }
@@ -1498,7 +1497,7 @@ const char* chris_http_request_path(long long handle) {
     if (!handle) return "";
     chris_http_request* req = (chris_http_request*)(uintptr_t)handle;
     size_t len = strlen(req->path);
-    char* result = (char*)malloc(len + 1);
+    char* result = (char*)chris_gc_alloc(len + 1, GC_STRING);
     memcpy(result, req->path, len + 1);
     return result;
 }
@@ -1508,7 +1507,7 @@ const char* chris_http_request_body(long long handle) {
     if (!handle) return "";
     chris_http_request* req = (chris_http_request*)(uintptr_t)handle;
     size_t len = req->bodyLen;
-    char* result = (char*)malloc(len + 1);
+    char* result = (char*)chris_gc_alloc(len + 1, GC_STRING);
     memcpy(result, req->body, len + 1);
     return result;
 }
@@ -1837,14 +1836,14 @@ long long chris_math_random(long long lo, long long hi) {
 const char* chris_read_line(void) {
     char buf[4096];
     if (fgets(buf, sizeof(buf), stdin) == NULL) {
-        char* empty = (char*)malloc(1);
+        char* empty = (char*)chris_gc_alloc(1, GC_STRING);
         empty[0] = '\0';
         return empty;
     }
     // Strip trailing newline
     size_t len = strlen(buf);
     if (len > 0 && buf[len - 1] == '\n') buf[len - 1] = '\0';
-    char* result = (char*)malloc(strlen(buf) + 1);
+    char* result = (char*)chris_gc_alloc(strlen(buf) + 1, GC_STRING);
     strcpy(result, buf);
     return result;
 }
@@ -2218,7 +2217,7 @@ const char* chris_json_stringify(long long handle) {
     int pos = 0;
     json_stringify_node(n, buf, &pos, cap);
     buf[pos] = '\0';
-    char* result = (char*)malloc(pos + 1);
+    char* result = (char*)chris_gc_alloc(pos + 1, GC_STRING);
     memcpy(result, buf, pos + 1);
     free(buf);
     return result;

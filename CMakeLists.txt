@@ -97,21 +97,23 @@ if(BUILD_TESTS)
         tests/fmt/test_formatter.cpp
         tests/annotations/test_annotations.cpp
         tests/stdlib/test_stdlib.cpp
+        tests/gc/test_gc.cpp
     )
-    target_link_libraries(chris_tests chris_lib GTest::gtest GTest::gtest_main)
-    target_include_directories(chris_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(chris_tests chris_lib chris_runtime GTest::gtest GTest::gtest_main)
+    target_include_directories(chris_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/runtime)
 
     include(GoogleTest)
     gtest_discover_tests(chris_tests)
 
     # Runtime library (compiled as static lib for linking into compiled programs)
-    add_library(chris_runtime STATIC runtime/runtime.c)
+    add_library(chris_runtime STATIC runtime/runtime.c runtime/gc.c)
     target_include_directories(chris_runtime PUBLIC ${CMAKE_SOURCE_DIR}/runtime)
 endif()
 
 # Runtime library (always build)
 if(NOT TARGET chris_runtime)
-    add_library(chris_runtime STATIC runtime/runtime.c)
+    add_library(chris_runtime STATIC runtime/runtime.c runtime/gc.c)
+    target_include_directories(chris_runtime PUBLIC ${CMAKE_SOURCE_DIR}/runtime)
 endif()
 
 # Compiler library (always build — used by LSP and tests)

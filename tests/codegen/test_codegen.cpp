@@ -327,7 +327,7 @@ TEST_F(CodeGenTest, ClassConstructor) {
     );
     ASSERT_FALSE(diag.hasErrors());
     EXPECT_NE(ir.find("Point_new"), std::string::npos);
-    EXPECT_NE(ir.find("malloc"), std::string::npos);
+    EXPECT_NE(ir.find("chris_gc_alloc"), std::string::npos);
 }
 
 TEST_F(CodeGenTest, ClassMethodCall) {
@@ -1213,7 +1213,7 @@ TEST_F(CodeGenTest, ClassConstructorAllocation) {
         "}\n"
     );
     ASSERT_FALSE(diag.hasErrors()) << "Codegen failed for class constructor";
-    EXPECT_NE(ir.find("malloc"), std::string::npos);
+    EXPECT_NE(ir.find("chris_gc_alloc"), std::string::npos);
 }
 
 TEST_F(CodeGenTest, ForEachStringArray) {

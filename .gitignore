@@ -1,49 +1,9 @@
 # Build directory
 build/
 
-# Compiled binaries (examples) — ignore files without extensions
-# Each .chr file may produce a binary with the same name
-examples/adt
-examples/arraymethods
-examples/arrays
-examples/assertions
-examples/async
-examples/channels
-examples/classes
-examples/comprehensive
-examples/concurrent
-examples/conversions
-examples/enums
-examples/errors
-examples/exec
-examples/extern
-examples/fibonacci
-examples/fileio
-examples/generics
-examples/hello
-examples/higherorder
-examples/http
-examples/imports
-examples/inheritance
-examples/interfaces
-examples/json
-examples/lambdas
-examples/let
-examples/maps
-examples/math
-examples/mathlib
-examples/messy
-examples/networking
-examples/nullsafety
-examples/operators
-examples/point
-examples/reflection
-examples/sets
-examples/shared
-examples/sorting
-examples/strings
-examples/types
-examples/unsafe
+# Compiled binaries (examples) — ignore extensionless files
+examples/[!.]*
+!examples/*.chr
 
 # Object files
 *.o

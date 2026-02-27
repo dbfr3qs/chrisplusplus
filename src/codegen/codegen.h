@@ -333,6 +333,20 @@ private:
     llvm::Function* runtimeAssertEqualStr_ = nullptr;
     llvm::Function* runtimeTestSummary_ = nullptr;
     llvm::Function* runtimeTestExitCode_ = nullptr;
+
+    // GC runtime functions
+    llvm::Function* runtimeGcInit_ = nullptr;
+    llvm::Function* runtimeGcAlloc_ = nullptr;
+    llvm::Function* runtimeGcAllocFinalizer_ = nullptr;
+    llvm::Function* runtimeGcSetNumPointers_ = nullptr;
+    llvm::Function* runtimeGcCollect_ = nullptr;
+    llvm::Function* runtimeGcShutdown_ = nullptr;
+    llvm::Function* runtimeGcPushRoot_ = nullptr;
+    llvm::Function* runtimeGcPopRoot_ = nullptr;
+    llvm::Function* runtimeGcPopRoots_ = nullptr;
+
+    // Track GC root count per function for pop_roots at return
+    size_t currentFuncGcRootCount_ = 0;
 };
 
 } // namespace chris
