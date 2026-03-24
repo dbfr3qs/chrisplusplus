@@ -81,11 +81,22 @@ enum class TokenType {
     QuestionMark,   // ?
     QuestionDot,    // ?.
     DoubleQuestion, // ??
+    Ampersand,      // &
+    Pipe,           // |
+    Caret,          // ^
+    Tilde,          // ~
+    ShiftLeft,      // <<
+    ShiftRight,     // >>
     PlusAssign,     // +=
     MinusAssign,    // -=
     StarAssign,     // *=
     SlashAssign,    // /=
     PercentAssign,  // %=
+    AmpersandAssign,// &=
+    PipeAssign,     // |=
+    CaretAssign,    // ^=
+    ShiftLeftAssign,// <<=
+    ShiftRightAssign,// >>=
 
     // Punctuation
     LeftParen,      // (

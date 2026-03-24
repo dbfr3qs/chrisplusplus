@@ -1,0 +1,9 @@
+// DOOM - powered by chrisplusplus
+// Uses doomgeneric C engine with SDL2 platform shim
+
+extern func dg_start(wad_path: String);
+
+func main() {
+    print("Starting DOOM from chrisplusplus...");
+    dg_start("doom1.wad");
+}

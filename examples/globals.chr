@@ -1,0 +1,26 @@
+// Global Variables Example
+
+var counter = 0;
+var greeting = "Hello";
+let MAX_SIZE = 100;
+
+func increment() {
+    counter = counter + 1;
+}
+
+func getCounter() -> Int {
+    return counter;
+}
+
+func main() {
+    print(greeting);
+    print(MAX_SIZE);
+
+    increment();
+    increment();
+    increment();
+    print(getCounter());
+
+    counter = 42;
+    print(getCounter());
+}

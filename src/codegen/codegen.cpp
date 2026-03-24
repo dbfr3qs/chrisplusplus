@@ -742,6 +742,83 @@ void CodeGen::declareRuntimeFunctions() {
     runtimeJsonStringify_ = llvm::Function::Create(jsonStringifyTy, llvm::Function::ExternalLinkage,
                                                       "chris_json_stringify", module_.get());
 
+    // --- Binary file I/O runtime functions ---
+
+    // chris_fopen(ptr path, ptr mode) -> i64
+    auto* fopenTy = llvm::FunctionType::get(i64Ty, {i8PtrTy, i8PtrTy}, false);
+    runtimeFopen_ = llvm::Function::Create(fopenTy, llvm::Function::ExternalLinkage,
+                                            "chris_fopen", module_.get());
+
+    // chris_fclose(i64 handle) -> void
+    auto* fcloseTy = llvm::FunctionType::get(voidTy, {i64Ty}, false);
+    runtimeFclose_ = llvm::Function::Create(fcloseTy, llvm::Function::ExternalLinkage,
+                                             "chris_fclose", module_.get());
+
+    // chris_fread(i64 handle, ptr buf, i64 count) -> i64
+    auto* freadTy = llvm::FunctionType::get(i64Ty, {i64Ty, i8PtrTy, i64Ty}, false);
+    runtimeFread_ = llvm::Function::Create(freadTy, llvm::Function::ExternalLinkage,
+                                            "chris_fread", module_.get());
+
+    // chris_fwrite(i64 handle, ptr buf, i64 count) -> i64
+    auto* fwriteTy = llvm::FunctionType::get(i64Ty, {i64Ty, i8PtrTy, i64Ty}, false);
+    runtimeFwrite_ = llvm::Function::Create(fwriteTy, llvm::Function::ExternalLinkage,
+                                             "chris_fwrite", module_.get());
+
+    // chris_fseek(i64 handle, i64 offset, i64 whence) -> i64
+    auto* fseekTy = llvm::FunctionType::get(i64Ty, {i64Ty, i64Ty, i64Ty}, false);
+    runtimeFseek_ = llvm::Function::Create(fseekTy, llvm::Function::ExternalLinkage,
+                                            "chris_fseek", module_.get());
+
+    // chris_ftell(i64 handle) -> i64
+    auto* ftellTy = llvm::FunctionType::get(i64Ty, {i64Ty}, false);
+    runtimeFtell_ = llvm::Function::Create(ftellTy, llvm::Function::ExternalLinkage,
+                                            "chris_ftell", module_.get());
+
+    // chris_fsize(i64 handle) -> i64
+    auto* fsizeTy = llvm::FunctionType::get(i64Ty, {i64Ty}, false);
+    runtimeFsize_ = llvm::Function::Create(fsizeTy, llvm::Function::ExternalLinkage,
+                                            "chris_fsize", module_.get());
+
+    // chris_alloc(i64 size) -> ptr
+    auto* allocTy = llvm::FunctionType::get(i8PtrTy, {i64Ty}, false);
+    runtimeAlloc_ = llvm::Function::Create(allocTy, llvm::Function::ExternalLinkage,
+                                            "chris_alloc", module_.get());
+
+    // chris_free(ptr) -> void
+    auto* deallocTy = llvm::FunctionType::get(voidTy, {i8PtrTy}, false);
+    runtimeDealloc_ = llvm::Function::Create(deallocTy, llvm::Function::ExternalLinkage,
+                                              "chris_free", module_.get());
+
+    // chris_ptr_load_i32(ptr) -> i64
+    auto* ptrLoadI32Ty = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimePtrLoadI32_ = llvm::Function::Create(ptrLoadI32Ty, llvm::Function::ExternalLinkage,
+                                                 "chris_ptr_load_i32", module_.get());
+
+    // chris_ptr_store_i32(ptr, i64) -> void
+    auto* ptrStoreI32Ty = llvm::FunctionType::get(voidTy, {i8PtrTy, i64Ty}, false);
+    runtimePtrStoreI32_ = llvm::Function::Create(ptrStoreI32Ty, llvm::Function::ExternalLinkage,
+                                                  "chris_ptr_store_i32", module_.get());
+
+    // chris_ptr_load_i16(ptr) -> i64
+    auto* ptrLoadI16Ty = llvm::FunctionType::get(i64Ty, {i8PtrTy}, false);
+    runtimePtrLoadI16_ = llvm::Function::Create(ptrLoadI16Ty, llvm::Function::ExternalLinkage,
+                                                 "chris_ptr_load_i16", module_.get());
+
+    // chris_ptr_store_i16(ptr, i64) -> void
+    auto* ptrStoreI16Ty = llvm::FunctionType::get(voidTy, {i8PtrTy, i64Ty}, false);
+    runtimePtrStoreI16_ = llvm::Function::Create(ptrStoreI16Ty, llvm::Function::ExternalLinkage,
+                                                  "chris_ptr_store_i16", module_.get());
+
+    // chris_memcpy(ptr dst, ptr src, i64 count) -> void
+    auto* memcpyTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i8PtrTy, i64Ty}, false);
+    runtimeMemcpy_ = llvm::Function::Create(memcpyTy, llvm::Function::ExternalLinkage,
+                                             "chris_memcpy", module_.get());
+
+    // chris_memset(ptr dst, i64 val, i64 count) -> void
+    auto* memsetTy = llvm::FunctionType::get(voidTy, {i8PtrTy, i64Ty, i64Ty}, false);
+    runtimeMemset_ = llvm::Function::Create(memsetTy, llvm::Function::ExternalLinkage,
+                                             "chris_memset", module_.get());
+
     // chris_assert_summary() -> void
     auto* testSummaryTy = llvm::FunctionType::get(voidTy, {}, false);
     runtimeTestSummary_ = llvm::Function::Create(testSummaryTy, llvm::Function::ExternalLinkage,
@@ -813,6 +890,9 @@ bool CodeGen::generate(Program& program,
             ClassInfo info;
             info.structType = llvm::StructType::create(*context_, cls->name);
             info.isShared = cls->isShared;
+            for (auto& ann : cls->annotations) {
+                if (ann.name == "CLayout") info.isCLayout = true;
+            }
             classInfos_[cls->name] = info;
         } else if (auto* enm = dynamic_cast<EnumDecl*>(decl.get())) {
             EnumInfo info;
@@ -1049,6 +1129,77 @@ bool CodeGen::generate(Program& program,
                                  inst.typeParams, inst.typeArgs);
     }
 
+    // Pass 1.6: declare global variables
+    std::vector<VarDecl*> globalVarDecls;
+    for (auto& decl : program.declarations) {
+        if (auto* varDecl = dynamic_cast<VarDecl*>(decl.get())) {
+            // Determine LLVM type from initializer or type annotation
+            llvm::Type* varType = llvm::Type::getInt64Ty(*context_); // default Int
+            if (varDecl->typeAnnotation) {
+                varType = getLLVMType(varDecl->typeAnnotation.get());
+            } else if (varDecl->initializer) {
+                // Infer from initializer kind
+                if (dynamic_cast<FloatLiteralExpr*>(varDecl->initializer.get())) {
+                    varType = llvm::Type::getDoubleTy(*context_);
+                } else if (dynamic_cast<BoolLiteralExpr*>(varDecl->initializer.get())) {
+                    varType = llvm::Type::getInt1Ty(*context_);
+                } else if (dynamic_cast<StringLiteralExpr*>(varDecl->initializer.get())) {
+                    varType = llvm::PointerType::getUnqual(*context_);
+                }
+            }
+
+            llvm::Constant* initVal = nullptr;
+            if (varType->isIntegerTy(64)) initVal = llvm::ConstantInt::get(varType, 0);
+            else if (varType->isIntegerTy(32)) initVal = llvm::ConstantInt::get(varType, 0);
+            else if (varType->isIntegerTy(16)) initVal = llvm::ConstantInt::get(varType, 0);
+            else if (varType->isIntegerTy(8)) initVal = llvm::ConstantInt::get(varType, 0);
+            else if (varType->isIntegerTy(1)) initVal = llvm::ConstantInt::get(varType, 0);
+            else if (varType->isDoubleTy()) initVal = llvm::ConstantFP::get(varType, 0.0);
+            else if (varType->isFloatTy()) initVal = llvm::ConstantFP::get(varType, 0.0);
+            else if (varType->isPointerTy()) initVal = llvm::ConstantPointerNull::get(llvm::PointerType::getUnqual(*context_));
+            else initVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 0);
+
+            auto* gv = new llvm::GlobalVariable(
+                *module_, varType, false,
+                llvm::GlobalValue::InternalLinkage, initVal,
+                "global." + varDecl->name);
+            globalVars_[varDecl->name] = gv;
+            globalVarTypes_[varDecl->name] = varType;
+
+            if (varDecl->initializer) {
+                globalVarDecls.push_back(varDecl);
+            }
+        }
+    }
+
+    // Pass 1.7: create __chris_init_globals() for complex global initializers
+    if (!globalVarDecls.empty()) {
+        auto* voidTy = llvm::Type::getVoidTy(*context_);
+        auto* initFnTy = llvm::FunctionType::get(voidTy, {}, false);
+        auto* initFn = llvm::Function::Create(initFnTy, llvm::Function::InternalLinkage,
+                                                "__chris_init_globals", module_.get());
+        auto* bb = llvm::BasicBlock::Create(*context_, "entry", initFn);
+        builder_->SetInsertPoint(bb);
+
+        for (auto* varDecl : globalVarDecls) {
+            llvm::Value* val = emitExpr(*varDecl->initializer);
+            if (val) {
+                auto* gv = globalVars_[varDecl->name];
+                // Type coercion if needed
+                if (gv->getValueType() != val->getType()) {
+                    if (gv->getValueType()->isIntegerTy() && val->getType()->isIntegerTy()) {
+                        unsigned tBits = gv->getValueType()->getIntegerBitWidth();
+                        unsigned vBits = val->getType()->getIntegerBitWidth();
+                        if (tBits < vBits) val = builder_->CreateTrunc(val, gv->getValueType());
+                        else if (tBits > vBits) val = builder_->CreateSExt(val, gv->getValueType());
+                    }
+                }
+                builder_->CreateStore(val, gv);
+            }
+        }
+        builder_->CreateRetVoid();
+    }
+
     // Second pass: emit function bodies and class method bodies
     for (auto& decl : program.declarations) {
         if (auto* func = dynamic_cast<FuncDecl*>(decl.get())) {
@@ -1092,7 +1243,9 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
         builder_->SetInsertPoint(thunkBB);
 
         auto oldNamedValues = namedValues_;
+        auto oldGcRootCount = currentFuncGcRootCount_;
         namedValues_.clear();
+        currentFuncGcRootCount_ = 0;
 
         // Unpack parameters from the args struct (i64* array)
         llvm::Value* argsPtr = &*thunkFunc->arg_begin();
@@ -1115,6 +1268,7 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
             auto* alloca = createEntryBlockAlloca(thunkFunc, func.parameters[i].name, paramTy);
             builder_->CreateStore(paramVal, alloca);
             namedValues_[func.parameters[i].name] = alloca;
+            emitGcRootPush(alloca);
         }
 
         // Emit function body statements
@@ -1125,10 +1279,12 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
         // Default return if no explicit return
         auto* curBlock = builder_->GetInsertBlock();
         if (curBlock && !curBlock->getTerminator()) {
+            emitGcPopRoots();
             builder_->CreateRet(llvm::ConstantInt::get(i64Ty, 0));
         }
 
         namedValues_ = oldNamedValues;
+        currentFuncGcRootCount_ = oldGcRootCount;
 
         // 3. Emit the public async function that spawns the thunk
         auto* entryBB = llvm::BasicBlock::Create(*context_, "entry", llvmFunc);
@@ -1184,15 +1340,21 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
     auto* bb = llvm::BasicBlock::Create(*context_, "entry", llvmFunc);
     builder_->SetInsertPoint(bb);
 
-    // If this is main(), initialize the GC
+    // If this is main(), initialize the GC and global variables
     bool isMain = (func.name == "main");
     if (isMain) {
         builder_->CreateCall(runtimeGcInit_, {});
+        // Call global variable initializer if it exists
+        if (auto* initFn = module_->getFunction("__chris_init_globals")) {
+            builder_->CreateCall(initFn, {});
+        }
     }
 
-    // Save old named values and create new scope
+    // Save old named values and GC root count, create new scope
     auto oldNamedValues = namedValues_;
+    auto oldGcRootCount = currentFuncGcRootCount_;
     namedValues_.clear();
+    currentFuncGcRootCount_ = 0;
 
     // Create allocas for parameters
     size_t idx = 0;
@@ -1216,6 +1378,7 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
                 auto* alloca = createEntryBlockAlloca(llvmFunc, func.parameters[idx].name, arg.getType());
                 builder_->CreateStore(&arg, alloca);
                 namedValues_[func.parameters[idx].name] = alloca;
+                emitGcRootPush(alloca);
             }
         }
         idx++;
@@ -1229,6 +1392,7 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
     // If the function returns void and the last block doesn't have a terminator, add ret void
     auto* currentBlock = builder_->GetInsertBlock();
     if (currentBlock && !currentBlock->getTerminator()) {
+        emitGcPopRoots();
         if (isMain) {
             builder_->CreateCall(runtimeGcShutdown_, {});
         }
@@ -1241,6 +1405,7 @@ void CodeGen::emitFuncDecl(FuncDecl& func) {
     }
 
     namedValues_ = oldNamedValues;
+    currentFuncGcRootCount_ = oldGcRootCount;
 }
 
 void CodeGen::emitClassDecl(ClassDecl& cls) {
@@ -1260,8 +1425,10 @@ void CodeGen::emitClassDecl(ClassDecl& cls) {
         auto oldNamedValues = namedValues_;
         auto oldThisPtr = thisPtr_;
         auto oldClassName = currentClassName_;
+        auto oldGcRootCount = currentFuncGcRootCount_;
         namedValues_.clear();
         currentClassName_ = cls.name;
+        currentFuncGcRootCount_ = 0;
 
         // First arg is 'this' pointer
         auto argIt = llvmFunc->arg_begin();
@@ -1270,6 +1437,7 @@ void CodeGen::emitClassDecl(ClassDecl& cls) {
             llvm::PointerType::getUnqual(*context_));
         builder_->CreateStore(&*argIt, thisAlloca);
         thisPtr_ = thisAlloca;
+        emitGcRootPush(thisAlloca);
         ++argIt;
 
         // Remaining args are method parameters
@@ -1281,6 +1449,7 @@ void CodeGen::emitClassDecl(ClassDecl& cls) {
                     method->parameters[idx].name, argIt->getType());
                 builder_->CreateStore(&*argIt, alloca);
                 namedValues_[method->parameters[idx].name] = alloca;
+                emitGcRootPush(alloca);
             }
         }
 
@@ -1292,6 +1461,7 @@ void CodeGen::emitClassDecl(ClassDecl& cls) {
         // Add default terminator if needed
         auto* currentBlock = builder_->GetInsertBlock();
         if (currentBlock && !currentBlock->getTerminator()) {
+            emitGcPopRoots();
             if (llvmFunc->getReturnType()->isVoidTy()) {
                 builder_->CreateRetVoid();
             } else {
@@ -1302,6 +1472,7 @@ void CodeGen::emitClassDecl(ClassDecl& cls) {
         namedValues_ = oldNamedValues;
         thisPtr_ = oldThisPtr;
         currentClassName_ = oldClassName;
+        currentFuncGcRootCount_ = oldGcRootCount;
     }
 }
 
@@ -1425,11 +1596,13 @@ void CodeGen::emitVarDecl(VarDecl& decl) {
             auto* alloca = createEntryBlockAlloca(func, decl.name, initVal->getType());
             builder_->CreateStore(initVal, alloca);
             namedValues_[decl.name] = alloca;
+            emitGcRootPush(alloca);
         }
     } else {
         auto* alloca = createEntryBlockAlloca(func, decl.name, initVal->getType());
         builder_->CreateStore(initVal, alloca);
         namedValues_[decl.name] = alloca;
+        emitGcRootPush(alloca);
     }
 
     // Track class type for variable (needed for generic method dispatch and typeof)
@@ -1693,9 +1866,11 @@ void CodeGen::emitReturnStmt(ReturnStmt& stmt) {
                     retVal = builder_->CreateLoad(arrayStructType_, retVal, "ret.arr");
                 }
             }
+            emitGcPopRoots();
             builder_->CreateRet(retVal);
         }
     } else {
+        emitGcPopRoots();
         builder_->CreateRetVoid();
     }
 }
@@ -1759,6 +1934,11 @@ llvm::Value* CodeGen::emitNilLiteral(NilLiteralExpr& /*expr*/) {
 llvm::Value* CodeGen::emitIdentifier(IdentifierExpr& expr) {
     auto it = namedValues_.find(expr.name);
     if (it == namedValues_.end()) {
+        // Check global variables
+        auto git = globalVars_.find(expr.name);
+        if (git != globalVars_.end()) {
+            return builder_->CreateLoad(git->second->getValueType(), git->second, expr.name);
+        }
         // Could be a function name
         llvm::Function* func = module_->getFunction(expr.name);
         if (func) return func;
@@ -1840,6 +2020,19 @@ llvm::Value* CodeGen::emitBinaryExpr(BinaryExpr& expr) {
         return emitStringConcat(left, right);
     }
 
+    // Pointer arithmetic: ptr + int or ptr - int (must be before regular arithmetic)
+    if (left->getType()->isPointerTy() && right->getType()->isIntegerTy()) {
+        if (expr.op == "+") {
+            auto* i8Ty = llvm::Type::getInt8Ty(*context_);
+            return builder_->CreateGEP(i8Ty, left, right, "ptr.add");
+        }
+        if (expr.op == "-") {
+            auto* i8Ty = llvm::Type::getInt8Ty(*context_);
+            auto* negIdx = builder_->CreateNeg(right, "neg");
+            return builder_->CreateGEP(i8Ty, left, negIdx, "ptr.sub");
+        }
+    }
+
     bool anyFloat = isFloat || isFloat32;
 
     // Arithmetic
@@ -1861,6 +2054,13 @@ llvm::Value* CodeGen::emitBinaryExpr(BinaryExpr& expr) {
     if (expr.op == "&&") return builder_->CreateAnd(left, right, "andtmp");
     if (expr.op == "||") return builder_->CreateOr(left, right, "ortmp");
 
+    // Bitwise
+    if (expr.op == "&") return builder_->CreateAnd(left, right, "bitandtmp");
+    if (expr.op == "|") return builder_->CreateOr(left, right, "bitortmp");
+    if (expr.op == "^") return builder_->CreateXor(left, right, "bitxortmp");
+    if (expr.op == "<<") return builder_->CreateShl(left, right, "shltmp");
+    if (expr.op == ">>") return builder_->CreateAShr(left, right, "ashrtmp");
+
     return nullptr;
 }
 
@@ -1876,6 +2076,9 @@ llvm::Value* CodeGen::emitUnaryExpr(UnaryExpr& expr) {
     }
     if (expr.op == "!") {
         return builder_->CreateNot(operand, "nottmp");
+    }
+    if (expr.op == "~") {
+        return builder_->CreateNot(operand, "bitnottmp");
     }
 
     return nullptr;
@@ -2106,6 +2309,8 @@ llvm::Value* CodeGen::emitCallExpr(CallExpr& expr) {
         {
             const std::string& method = memberCallee->member;
             if (method == "toString" || method == "toInt" || method == "toFloat" || method == "toChar" ||
+                method == "toByte" || method == "toInt8" || method == "toInt16" || method == "toInt32" ||
+                method == "toPtr" || method == "toFloat32" ||
                 method == "length" || method == "contains" || method == "startsWith" ||
                 method == "endsWith" || method == "indexOf" || method == "substring" ||
                 method == "replace" || method == "trim" || method == "toUpper" ||
@@ -2121,6 +2326,14 @@ llvm::Value* CodeGen::emitCallExpr(CallExpr& expr) {
                             objVal, llvm::Type::getDoubleTy(*context_), "int2float");
                         if (method == "toChar") return builder_->CreateTrunc(
                             objVal, llvm::Type::getInt8Ty(*context_), "int2char");
+                        if (method == "toByte" || method == "toInt8") return builder_->CreateTrunc(
+                            objVal, llvm::Type::getInt8Ty(*context_), "int2byte");
+                        if (method == "toInt16") return builder_->CreateTrunc(
+                            objVal, llvm::Type::getInt16Ty(*context_), "int2i16");
+                        if (method == "toInt32") return builder_->CreateTrunc(
+                            objVal, llvm::Type::getInt32Ty(*context_), "int2i32");
+                        if (method == "toPtr") return builder_->CreateIntToPtr(
+                            objVal, llvm::PointerType::getUnqual(*context_), "int2ptr");
                     }
                     // Sized integer methods (i16, i32 — excludes i8/Char and i1/Bool)
                     if (objTy->isIntegerTy() && !objTy->isIntegerTy(64) &&
@@ -2147,6 +2360,8 @@ llvm::Value* CodeGen::emitCallExpr(CallExpr& expr) {
                         if (method == "toString") return emitFloatToString(objVal);
                         if (method == "toInt") return builder_->CreateFPToSI(
                             objVal, llvm::Type::getInt64Ty(*context_), "float2int");
+                        if (method == "toFloat32") return builder_->CreateFPTrunc(
+                            objVal, llvm::Type::getFloatTy(*context_), "f64tof32");
                     }
                     // Float32 methods
                     if (objTy->isFloatTy()) {
@@ -2289,8 +2504,13 @@ llvm::Value* CodeGen::emitCallExpr(CallExpr& expr) {
                     const auto& dataLayout = module_->getDataLayout();
                     uint64_t structSize = dataLayout.getTypeAllocSize(structTy);
                     auto* sizeVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), structSize);
-                    auto* typeTag = llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context_), 1); // GC_OBJECT
-                    thisArg = builder_->CreateCall(runtimeGcAlloc_, {sizeVal, typeTag}, "obj.alloc");
+                    if (info.isCLayout) {
+                        // @CLayout: use malloc, not GC
+                        thisArg = builder_->CreateCall(runtimeAlloc_, {sizeVal}, "clayout.alloc");
+                    } else {
+                        auto* typeTag = llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context_), 1); // GC_OBJECT
+                        thisArg = builder_->CreateCall(runtimeGcAlloc_, {sizeVal, typeTag}, "obj.alloc");
+                    }
                 } else {
                     thisArg = llvm::ConstantPointerNull::get(
                         llvm::PointerType::getUnqual(*context_));
@@ -2301,8 +2521,12 @@ llvm::Value* CodeGen::emitCallExpr(CallExpr& expr) {
                 args.insert(args.end(), argVals.begin(), argVals.end());
 
                 if (isConstructor) {
-                    builder_->CreateCall(methodFunc, args);
-                    // Constructor returns the allocated object
+                    auto* callResult = builder_->CreateCall(methodFunc, args);
+                    // If constructor returns a value (e.g. return ClassName { ... }),
+                    // use that; otherwise use the pre-allocated thisArg
+                    if (!methodFunc->getReturnType()->isVoidTy()) {
+                        return callResult;
+                    }
                     return thisArg;
                 }
                 if (methodFunc->getReturnType()->isVoidTy()) {
@@ -2941,6 +3165,157 @@ llvm::Value* CodeGen::emitCallExpr(CallExpr& expr) {
         return nullptr;
     }
 
+    // Built-in binary file I/O functions
+    if (identCallee->name == "fopen" && expr.arguments.size() >= 2) {
+        llvm::Value* path = emitExpr(*expr.arguments[0]);
+        llvm::Value* mode = emitExpr(*expr.arguments[1]);
+        if (!path || !mode) return nullptr;
+        return builder_->CreateCall(runtimeFopen_, {path, mode}, "fopen");
+    }
+    if (identCallee->name == "fclose" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        builder_->CreateCall(runtimeFclose_, {handle});
+        return nullptr;
+    }
+    if (identCallee->name == "fread" && expr.arguments.size() >= 3) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* buf = emitExpr(*expr.arguments[1]);
+        llvm::Value* count = emitExpr(*expr.arguments[2]);
+        if (!handle || !buf || !count) return nullptr;
+        return builder_->CreateCall(runtimeFread_, {handle, buf, count}, "fread");
+    }
+    if (identCallee->name == "fwrite" && expr.arguments.size() >= 3) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* buf = emitExpr(*expr.arguments[1]);
+        llvm::Value* count = emitExpr(*expr.arguments[2]);
+        if (!handle || !buf || !count) return nullptr;
+        return builder_->CreateCall(runtimeFwrite_, {handle, buf, count}, "fwrite");
+    }
+    if (identCallee->name == "fseek" && expr.arguments.size() >= 3) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        llvm::Value* offset = emitExpr(*expr.arguments[1]);
+        llvm::Value* whence = emitExpr(*expr.arguments[2]);
+        if (!handle || !offset || !whence) return nullptr;
+        return builder_->CreateCall(runtimeFseek_, {handle, offset, whence}, "fseek");
+    }
+    if (identCallee->name == "ftell" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        return builder_->CreateCall(runtimeFtell_, {handle}, "ftell");
+    }
+    if (identCallee->name == "fsize" && expr.arguments.size() >= 1) {
+        llvm::Value* handle = emitExpr(*expr.arguments[0]);
+        if (!handle) return nullptr;
+        return builder_->CreateCall(runtimeFsize_, {handle}, "fsize");
+    }
+    if (identCallee->name == "alloc" && expr.arguments.size() >= 1) {
+        llvm::Value* size = emitExpr(*expr.arguments[0]);
+        if (!size) return nullptr;
+        return builder_->CreateCall(runtimeAlloc_, {size}, "alloc");
+    }
+    if (identCallee->name == "dealloc" && expr.arguments.size() >= 1) {
+        llvm::Value* ptr = emitExpr(*expr.arguments[0]);
+        if (!ptr) return nullptr;
+        builder_->CreateCall(runtimeDealloc_, {ptr});
+        return nullptr;
+    }
+
+    // Built-in pointer utility functions
+    if (identCallee->name == "ptrToInt" && expr.arguments.size() >= 1) {
+        llvm::Value* ptr = emitExpr(*expr.arguments[0]);
+        if (!ptr) return nullptr;
+        return builder_->CreatePtrToInt(ptr, llvm::Type::getInt64Ty(*context_), "ptr2int");
+    }
+    if (identCallee->name == "intToPtr" && expr.arguments.size() >= 1) {
+        llvm::Value* val = emitExpr(*expr.arguments[0]);
+        if (!val) return nullptr;
+        return builder_->CreateIntToPtr(val, llvm::PointerType::getUnqual(*context_), "int2ptr");
+    }
+    if (identCallee->name == "ptrLoad" && expr.arguments.size() >= 1) {
+        llvm::Value* ptr = emitExpr(*expr.arguments[0]);
+        if (!ptr) return nullptr;
+        return builder_->CreateLoad(llvm::Type::getInt64Ty(*context_), ptr, "ptr.load");
+    }
+    if (identCallee->name == "ptrStore" && expr.arguments.size() >= 2) {
+        llvm::Value* ptr = emitExpr(*expr.arguments[0]);
+        llvm::Value* val = emitExpr(*expr.arguments[1]);
+        if (!ptr || !val) return nullptr;
+        builder_->CreateStore(val, ptr);
+        return nullptr;
+    }
+    if (identCallee->name == "ptrLoadByte" && expr.arguments.size() >= 1) {
+        llvm::Value* ptr = emitExpr(*expr.arguments[0]);
+        if (!ptr) return nullptr;
+        auto* byte = builder_->CreateLoad(llvm::Type::getInt8Ty(*context_), ptr, "ptr.loadbyte");
+        return builder_->CreateZExt(byte, llvm::Type::getInt64Ty(*context_), "byte2int");
+    }
+    if (identCallee->name == "ptrStoreByte" && expr.arguments.size() >= 2) {
+        llvm::Value* ptr = emitExpr(*expr.arguments[0]);
+        llvm::Value* val = emitExpr(*expr.arguments[1]);
+        if (!ptr || !val) return nullptr;
+        auto* byte = builder_->CreateTrunc(val, llvm::Type::getInt8Ty(*context_), "int2byte");
+        builder_->CreateStore(byte, ptr);
+        return nullptr;
+    }
+    if (identCallee->name == "ptrLoadInt32" && expr.arguments.size() >= 1) {
+        llvm::Value* ptr = emitExpr(*expr.arguments[0]);
+        if (!ptr) return nullptr;
+        return builder_->CreateCall(runtimePtrLoadI32_, {ptr}, "ptr.loadi32");
+    }
+    if (identCallee->name == "ptrStoreInt32" && expr.arguments.size() >= 2) {
+        llvm::Value* ptr = emitExpr(*expr.arguments[0]);
+        llvm::Value* val = emitExpr(*expr.arguments[1]);
+        if (!ptr || !val) return nullptr;
+        builder_->CreateCall(runtimePtrStoreI32_, {ptr, val});
+        return nullptr;
+    }
+    if (identCallee->name == "ptrLoadInt16" && expr.arguments.size() >= 1) {
+        llvm::Value* ptr = emitExpr(*expr.arguments[0]);
+        if (!ptr) return nullptr;
+        return builder_->CreateCall(runtimePtrLoadI16_, {ptr}, "ptr.loadi16");
+    }
+    if (identCallee->name == "ptrStoreInt16" && expr.arguments.size() >= 2) {
+        llvm::Value* ptr = emitExpr(*expr.arguments[0]);
+        llvm::Value* val = emitExpr(*expr.arguments[1]);
+        if (!ptr || !val) return nullptr;
+        builder_->CreateCall(runtimePtrStoreI16_, {ptr, val});
+        return nullptr;
+    }
+    if (identCallee->name == "memcpy" && expr.arguments.size() >= 3) {
+        llvm::Value* dst = emitExpr(*expr.arguments[0]);
+        llvm::Value* src = emitExpr(*expr.arguments[1]);
+        llvm::Value* count = emitExpr(*expr.arguments[2]);
+        if (!dst || !src || !count) return nullptr;
+        builder_->CreateCall(runtimeMemcpy_, {dst, src, count});
+        return nullptr;
+    }
+    if (identCallee->name == "memset" && expr.arguments.size() >= 3) {
+        llvm::Value* dst = emitExpr(*expr.arguments[0]);
+        llvm::Value* val = emitExpr(*expr.arguments[1]);
+        llvm::Value* count = emitExpr(*expr.arguments[2]);
+        if (!dst || !val || !count) return nullptr;
+        builder_->CreateCall(runtimeMemset_, {dst, val, count});
+        return nullptr;
+    }
+
+    // Built-in sizeofType("ClassName") -> Int
+    if (identCallee->name == "sizeofType" && expr.arguments.size() >= 1) {
+        // Extract class name from string literal argument
+        if (auto* strLit = dynamic_cast<StringLiteralExpr*>(expr.arguments[0].get())) {
+            std::string className = strLit->value;
+            auto it = classInfos_.find(className);
+            if (it != classInfos_.end()) {
+                auto* structTy = it->second.structType;
+                const auto& dataLayout = module_->getDataLayout();
+                uint64_t structSize = dataLayout.getTypeAllocSize(structTy);
+                return llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), structSize);
+            }
+        }
+        // Fallback: return 0 for unknown types
+        return llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), 0);
+    }
+
     // Built-in process execution functions
     if (identCallee->name == "exec" && expr.arguments.size() >= 1) {
         llvm::Value* cmd = emitExpr(*expr.arguments[0]);
@@ -3073,6 +3448,21 @@ llvm::Value* CodeGen::emitAssignExpr(AssignExpr& expr) {
             builder_->CreateStore(val, it->second);
             return val;
         }
+        // Check global variables
+        auto git = globalVars_.find(ident->name);
+        if (git != globalVars_.end()) {
+            llvm::Type* targetTy = git->second->getValueType();
+            if (targetTy != val->getType()) {
+                if (targetTy->isIntegerTy() && val->getType()->isIntegerTy()) {
+                    unsigned tBits = targetTy->getIntegerBitWidth();
+                    unsigned vBits = val->getType()->getIntegerBitWidth();
+                    if (tBits < vBits) val = builder_->CreateTrunc(val, targetTy, "assign.trunc");
+                    else if (tBits > vBits) val = builder_->CreateSExt(val, targetTy, "assign.sext");
+                }
+            }
+            builder_->CreateStore(val, git->second);
+            return val;
+        }
     }
 
     // Index assignment: arr[i] = value
@@ -3175,28 +3565,34 @@ llvm::Value* CodeGen::emitConstructExpr(ConstructExpr& expr) {
     auto& info = it->second;
     auto* structTy = info.structType;
 
-    // Allocate on heap using GC
+    // Allocate on heap
     const auto& dataLayout = module_->getDataLayout();
     uint64_t structSize = dataLayout.getTypeAllocSize(structTy);
-
     auto* sizeVal = llvm::ConstantInt::get(llvm::Type::getInt64Ty(*context_), structSize);
-    auto* typeTag = llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context_), 1); // GC_OBJECT
-    auto* rawPtr = builder_->CreateCall(runtimeGcAlloc_, {sizeVal, typeTag}, "obj");
 
-    // Tell GC how many pointer-typed fields this object has (for mark traversal)
-    uint16_t ptrFieldCount = 0;
-    for (const auto& fieldName : info.fieldNames) {
-        int idx = getFieldIndex(expr.className, fieldName);
-        if (idx >= 0) {
-            auto* fieldTy = structTy->getElementType(idx);
-            if (fieldTy->isPointerTy()) ptrFieldCount++;
+    llvm::Value* rawPtr;
+    if (info.isCLayout) {
+        // @CLayout: use malloc, not GC
+        rawPtr = builder_->CreateCall(runtimeAlloc_, {sizeVal}, "clayout.obj");
+    } else {
+        auto* typeTag = llvm::ConstantInt::get(llvm::Type::getInt8Ty(*context_), 1); // GC_OBJECT
+        rawPtr = builder_->CreateCall(runtimeGcAlloc_, {sizeVal, typeTag}, "obj");
+
+        // Tell GC how many pointer-typed fields this object has (for mark traversal)
+        uint16_t ptrFieldCount = 0;
+        for (const auto& fieldName : info.fieldNames) {
+            int idx = getFieldIndex(expr.className, fieldName);
+            if (idx >= 0) {
+                auto* fieldTy = structTy->getElementType(idx);
+                if (fieldTy->isPointerTy()) ptrFieldCount++;
+            }
         }
-    }
-    if (ptrFieldCount > 0) {
-        builder_->CreateCall(runtimeGcSetNumPointers_, {
-            rawPtr,
-            llvm::ConstantInt::get(llvm::Type::getInt16Ty(*context_), ptrFieldCount)
-        });
+        if (ptrFieldCount > 0) {
+            builder_->CreateCall(runtimeGcSetNumPointers_, {
+                rawPtr,
+                llvm::ConstantInt::get(llvm::Type::getInt16Ty(*context_), ptrFieldCount)
+            });
+        }
     }
 
     // Initialize mutex for shared classes
@@ -4078,6 +4474,9 @@ llvm::Type* CodeGen::getLLVMType(TypeExpr* typeExpr) {
     if (named->name == "Char")    return llvm::Type::getInt8Ty(*context_);
     if (named->name == "Void")    return llvm::Type::getVoidTy(*context_);
 
+    // Ptr type — opaque pointer
+    if (named->name == "Ptr")    return llvm::PointerType::getUnqual(*context_);
+
     // Function type: __func convention — represented as a pointer (function pointer)
     if (named->name == "__func")  return llvm::PointerType::getUnqual(*context_);
 
@@ -4107,6 +4506,21 @@ llvm::AllocaInst* CodeGen::createEntryBlockAlloca(llvm::Function* func,
                                                     llvm::Type* type) {
     llvm::IRBuilder<> tmpBuilder(&func->getEntryBlock(), func->getEntryBlock().begin());
     return tmpBuilder.CreateAlloca(type, nullptr, name);
+}
+
+void CodeGen::emitGcRootPush(llvm::AllocaInst* alloca) {
+    if (!alloca) return;
+    // Only root pointer-typed allocas (strings, class instances, nullable, etc.)
+    if (!alloca->getAllocatedType()->isPointerTy()) return;
+    builder_->CreateCall(runtimeGcPushRoot_, {alloca});
+    currentFuncGcRootCount_++;
+}
+
+void CodeGen::emitGcPopRoots() {
+    if (currentFuncGcRootCount_ == 0) return;
+    auto* countVal = llvm::ConstantInt::get(
+        llvm::Type::getInt64Ty(*context_), currentFuncGcRootCount_);
+    builder_->CreateCall(runtimeGcPopRoots_, {countVal});
 }
 
 void CodeGen::emitGenericClassInstance(ClassDecl& templateDecl,
@@ -4337,8 +4751,13 @@ bool CodeGen::emitObjectFile(const std::string& outputPath) {
 }
 
 bool CodeGen::linkExecutable(const std::string& objectPath, const std::string& runtimePath,
-                              const std::string& outputPath) {
-    std::string cmd = "cc " + objectPath + " " + runtimePath + " -lpthread -o " + outputPath;
+                              const std::string& outputPath,
+                              const std::vector<std::string>& extraFlags) {
+    std::string cmd = "cc " + objectPath + " " + runtimePath + " -lpthread";
+    for (const auto& flag : extraFlags) {
+        cmd += " " + flag;
+    }
+    cmd += " -o " + outputPath;
     int result = std::system(cmd.c_str());
     if (result != 0) {
         diagnostics_.error("E4005", "Linking failed",

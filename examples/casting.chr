@@ -1,0 +1,32 @@
+// Type Casting + Char/Int Conversion Example
+
+func main() {
+    // Int <-> Float
+    var x = 42;
+    var f = x.toFloat();
+    print(f);           // 42.0
+
+    var pi = 3.14;
+    var rounded = pi.toInt();
+    print(rounded);     // 3
+
+    // Int -> Char (ASCII)
+    var code = 65;
+    var ch = code.toChar();
+    print(ch);          // A
+
+    // Int -> sized integers
+    var big = 1000;
+    var small = big.toInt32();
+    var byte = big.toByte();
+
+    // Float -> Float32
+    var precise = 3.14159265;
+    var less = precise.toFloat32();
+
+    // Pointer utilities
+    var addr = 12345;
+    var p = intToPtr(addr);
+    var back = ptrToInt(p);
+    print(back);        // 12345
+}

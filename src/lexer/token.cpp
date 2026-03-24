@@ -12,7 +12,7 @@ bool Token::isLiteral() const {
 }
 
 bool Token::isOperator() const {
-    return type >= TokenType::Plus && type <= TokenType::DoubleQuestion;
+    return type >= TokenType::Plus && type <= TokenType::ShiftRightAssign;
 }
 
 std::string Token::typeToString(TokenType type) {
@@ -84,6 +84,22 @@ std::string Token::typeToString(TokenType type) {
         case TokenType::QuestionMark:      return "?";
         case TokenType::QuestionDot:       return "?.";
         case TokenType::DoubleQuestion:    return "??";
+        case TokenType::Ampersand:         return "&";
+        case TokenType::Pipe:              return "|";
+        case TokenType::Caret:             return "^";
+        case TokenType::Tilde:             return "~";
+        case TokenType::ShiftLeft:         return "<<";
+        case TokenType::ShiftRight:        return ">>";
+        case TokenType::PlusAssign:        return "+=";
+        case TokenType::MinusAssign:       return "-=";
+        case TokenType::StarAssign:        return "*=";
+        case TokenType::SlashAssign:       return "/=";
+        case TokenType::PercentAssign:     return "%=";
+        case TokenType::AmpersandAssign:   return "&=";
+        case TokenType::PipeAssign:        return "|=";
+        case TokenType::CaretAssign:       return "^=";
+        case TokenType::ShiftLeftAssign:   return "<<=";
+        case TokenType::ShiftRightAssign:  return ">>=";
         case TokenType::LeftParen:         return "(";
         case TokenType::RightParen:        return ")";
         case TokenType::LeftBrace:         return "{";

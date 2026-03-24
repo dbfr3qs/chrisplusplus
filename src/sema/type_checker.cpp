@@ -705,6 +705,36 @@ TypePtr TypeChecker::checkIdentifier(IdentifierExpr& expr) {
     if (expr.name == "jsonArrayGet") return makeFunctionType({intType(), intType()}, intType());
     if (expr.name == "jsonStringify") return makeFunctionType({intType()}, stringType());
 
+    // Built-in binary file I/O functions
+    if (expr.name == "fopen") return makeFunctionType({stringType(), stringType()}, intType());
+    if (expr.name == "fclose") return makeFunctionType({intType()}, voidType());
+    if (expr.name == "fread") return makeFunctionType({intType(), ptrType(), intType()}, intType());
+    if (expr.name == "fwrite") return makeFunctionType({intType(), ptrType(), intType()}, intType());
+    if (expr.name == "fseek") return makeFunctionType({intType(), intType(), intType()}, intType());
+    if (expr.name == "ftell") return makeFunctionType({intType()}, intType());
+    if (expr.name == "fsize") return makeFunctionType({intType()}, intType());
+    if (expr.name == "alloc") return makeFunctionType({intType()}, ptrType());
+    if (expr.name == "dealloc") return makeFunctionType({ptrType()}, voidType());
+
+    // Built-in pointer utility functions
+    if (expr.name == "ptrToInt") return makeFunctionType({ptrType()}, intType());
+    if (expr.name == "intToPtr") return makeFunctionType({intType()}, ptrType());
+    if (expr.name == "ptrLoad") return makeFunctionType({ptrType()}, intType());
+    if (expr.name == "ptrStore") return makeFunctionType({ptrType(), intType()}, voidType());
+    if (expr.name == "ptrLoadByte") return makeFunctionType({ptrType()}, intType());
+    if (expr.name == "ptrStoreByte") return makeFunctionType({ptrType(), intType()}, voidType());
+    if (expr.name == "ptrLoadInt32") return makeFunctionType({ptrType()}, intType());
+    if (expr.name == "ptrStoreInt32") return makeFunctionType({ptrType(), intType()}, voidType());
+    if (expr.name == "ptrLoadInt16") return makeFunctionType({ptrType()}, intType());
+    if (expr.name == "ptrStoreInt16") return makeFunctionType({ptrType(), intType()}, voidType());
+
+    // Built-in memory functions
+    if (expr.name == "memcpy") return makeFunctionType({ptrType(), ptrType(), intType()}, voidType());
+    if (expr.name == "memset") return makeFunctionType({ptrType(), intType(), intType()}, voidType());
+
+    // Built-in sizeof
+    if (expr.name == "sizeofType") return makeFunctionType({stringType()}, intType());
+
     // Built-in test assertions
     if (expr.name == "assert") return makeFunctionType({boolType(), stringType()}, voidType());
     if (expr.name == "assertEqual") return makeFunctionType({unknownType(), unknownType(), stringType()}, voidType());
@@ -755,6 +785,17 @@ TypePtr TypeChecker::checkBinaryExpr(BinaryExpr& expr) {
         if (expr.op == "+" && leftType->kind() == TypeKind::String &&
             rightType->kind() == TypeKind::String) {
             return stringType();
+        }
+
+        // Pointer arithmetic: Ptr + Int or Ptr - Int -> Ptr
+        if ((expr.op == "+" || expr.op == "-") &&
+            leftType->kind() == TypeKind::Ptr && rightType->isNumeric()) {
+            if (!inUnsafeBlock_) {
+                diagnostics_.error("E3010",
+                    "Pointer arithmetic requires an 'unsafe' block",
+                    expr.location);
+            }
+            return leftType;
         }
 
         if (!leftType->isNumeric() || !rightType->isNumeric()) {
@@ -819,6 +860,29 @@ TypePtr TypeChecker::checkBinaryExpr(BinaryExpr& expr) {
         return boolType();
     }
 
+    // Bitwise: &, |, ^, <<, >>
+    if (expr.op == "&" || expr.op == "|" || expr.op == "^" ||
+        expr.op == "<<" || expr.op == ">>") {
+        bool leftInt = leftType->isNumeric() && leftType->kind() != TypeKind::Float && leftType->kind() != TypeKind::Float32;
+        bool rightInt = rightType->isNumeric() && rightType->kind() != TypeKind::Float && rightType->kind() != TypeKind::Float32;
+        if (!leftInt || !rightInt) {
+            diagnostics_.error("E3010",
+                "Operator '" + expr.op + "' requires integer operands, got '" +
+                leftType->toString() + "' and '" + rightType->toString() + "'",
+                expr.location);
+            return unknownType();
+        }
+        // Promote to larger type
+        if (leftType->kind() == TypeKind::Int || rightType->kind() == TypeKind::Int ||
+            leftType->kind() == TypeKind::UInt || rightType->kind() == TypeKind::UInt) {
+            return intType();
+        }
+        if (leftType->equals(*rightType)) {
+            return leftType;
+        }
+        return intType();
+    }
+
     return unknownType();
 }
 
@@ -844,6 +908,17 @@ TypePtr TypeChecker::checkUnaryExpr(UnaryExpr& expr) {
             return unknownType();
         }
         return boolType();
+    }
+
+    if (expr.op == "~") {
+        bool isInt = operandType->isNumeric() && operandType->kind() != TypeKind::Float && operandType->kind() != TypeKind::Float32;
+        if (!isInt) {
+            diagnostics_.error("E3011",
+                "Unary '~' requires an integer operand, got '" + operandType->toString() + "'",
+                expr.location);
+            return unknownType();
+        }
+        return operandType;
     }
 
     return unknownType();
@@ -975,6 +1050,11 @@ TypePtr TypeChecker::checkMemberExpr(MemberExpr& expr) {
         if (expr.member == "toString") return makeFunctionType({}, stringType());
         if (expr.member == "toFloat") return makeFunctionType({}, floatType());
         if (expr.member == "toChar") return makeFunctionType({}, charType());
+        if (expr.member == "toByte") return makeFunctionType({}, int8Type());
+        if (expr.member == "toInt32") return makeFunctionType({}, int32Type());
+        if (expr.member == "toInt16") return makeFunctionType({}, int16Type());
+        if (expr.member == "toInt8") return makeFunctionType({}, int8Type());
+        if (expr.member == "toPtr") return makeFunctionType({}, ptrType());
     }
     if (objType->kind() == TypeKind::Int8 || objType->kind() == TypeKind::Int16 ||
         objType->kind() == TypeKind::Int32 || objType->kind() == TypeKind::UInt ||
@@ -991,6 +1071,7 @@ TypePtr TypeChecker::checkMemberExpr(MemberExpr& expr) {
     if (objType->kind() == TypeKind::Float) {
         if (expr.member == "toString") return makeFunctionType({}, stringType());
         if (expr.member == "toInt") return makeFunctionType({}, intType());
+        if (expr.member == "toFloat32") return makeFunctionType({}, float32Type());
     }
     if (objType->kind() == TypeKind::Float32) {
         if (expr.member == "toString") return makeFunctionType({}, stringType());
@@ -999,6 +1080,10 @@ TypePtr TypeChecker::checkMemberExpr(MemberExpr& expr) {
     }
     if (objType->kind() == TypeKind::Bool) {
         if (expr.member == "toString") return makeFunctionType({}, stringType());
+    }
+    // Ptr methods
+    if (objType->kind() == TypeKind::Ptr) {
+        if (expr.member == "toInt") return makeFunctionType({}, intType());
     }
     if (objType->kind() == TypeKind::String) {
         if (expr.member == "toInt") return makeFunctionType({}, intType());
@@ -1241,6 +1326,17 @@ TypePtr TypeChecker::resolveTypeAnnotation(TypeExpr& typeExpr) {
                 if (named->nullable) return makeNullable(result);
                 return result;
             }
+        }
+
+        // Built-in Ptr<T> type (raw pointer)
+        if (named->name == "Ptr") {
+            TypePtr pointee = nullptr;
+            if (!named->typeArgs.empty()) {
+                pointee = resolveTypeAnnotation(*named->typeArgs[0]);
+            }
+            auto result = ptrType(pointee);
+            if (named->nullable) return makeNullable(result);
+            return result;
         }
 
         // Built-in Array<T> type

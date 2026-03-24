@@ -124,6 +124,10 @@ TypePtr typeInfoType() {
     return std::make_shared<TypeInfoType>();
 }
 
+TypePtr ptrType(TypePtr pointee) {
+    return std::make_shared<PtrType>(std::move(pointee));
+}
+
 TypePtr substituteTypeParams(
     const TypePtr& type,
     const std::vector<std::string>& paramNames,
@@ -249,8 +253,9 @@ bool isAssignable(const TypePtr& target, const TypePtr& value) {
     // Same type
     if (target->equals(*value)) return true;
 
-    // nil is assignable to nullable types
+    // nil is assignable to nullable types and Ptr types
     if (value->kind() == TypeKind::Nil && target->isNullable()) return true;
+    if (value->kind() == TypeKind::Nil && target->kind() == TypeKind::Ptr) return true;
 
     // A non-nullable T is assignable to T?
     if (target->isNullable()) {

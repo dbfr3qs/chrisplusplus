@@ -33,6 +33,7 @@ enum class TypeKind {
     Map,
     Set,
     TypeInfo,
+    Ptr,
     Unknown
 };
 
@@ -192,6 +193,23 @@ struct TypeInfoType : Type {
     }
 };
 
+struct PtrType : Type {
+    TypePtr pointeeType; // what the pointer points to (nullptr = void/opaque)
+    PtrType(TypePtr pointee = nullptr) : pointeeType(std::move(pointee)) {}
+    TypeKind kind() const override { return TypeKind::Ptr; }
+    std::string toString() const override {
+        if (pointeeType) return "Ptr<" + pointeeType->toString() + ">";
+        return "Ptr";
+    }
+    bool equals(const Type& other) const override {
+        if (other.kind() != TypeKind::Ptr) return false;
+        auto& otherPtr = static_cast<const PtrType&>(other);
+        if (!pointeeType && !otherPtr.pointeeType) return true;
+        if (!pointeeType || !otherPtr.pointeeType) return true; // opaque matches any
+        return pointeeType->equals(*otherPtr.pointeeType);
+    }
+};
+
 struct TypeParameterType : Type {
     std::string name; // e.g. "T"
     TypeKind kind() const override { return TypeKind::TypeParameter; }
@@ -262,6 +280,7 @@ TypePtr makeFutureType(TypePtr innerType);
 TypePtr makeMapType(TypePtr keyType, TypePtr valueType);
 TypePtr makeSetType(TypePtr elementType);
 TypePtr typeInfoType();
+TypePtr ptrType(TypePtr pointee = nullptr);
 
 // Substitute type parameters with concrete types in a given type
 TypePtr substituteTypeParams(

@@ -337,3 +337,90 @@ TEST_F(GCCodegenTest, GcSetNumPointersForObjectWithPointerFields) {
     // String field is a pointer, so set_num_pointers should be emitted
     EXPECT_NE(ir.find("chris_gc_set_num_pointers"), std::string::npos);
 }
+
+// ============================================================================
+// Shadow stack codegen tests
+// ============================================================================
+
+TEST_F(GCCodegenTest, StringVarEmitsPushRoot) {
+    auto ir = generateIR(
+        "func main() {\n"
+        "    var s = \"hello\";\n"
+        "    print(s);\n"
+        "}\n"
+    );
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_NE(ir.find("chris_gc_push_root"), std::string::npos);
+    EXPECT_NE(ir.find("chris_gc_pop_roots"), std::string::npos);
+}
+
+TEST_F(GCCodegenTest, IntVarDoesNotEmitPushRoot) {
+    auto ir = generateIR(
+        "func main() {\n"
+        "    var x = 42;\n"
+        "}\n"
+    );
+    ASSERT_FALSE(diag.hasErrors());
+    // Int is not a pointer type, so no GC root push call should be emitted
+    EXPECT_EQ(ir.find("call void @chris_gc_push_root"), std::string::npos);
+}
+
+TEST_F(GCCodegenTest, ClassInstanceVarEmitsPushRoot) {
+    auto ir = generateIR(
+        "class Point {\n"
+        "    public var x: Int;\n"
+        "    public var y: Int;\n"
+        "}\n"
+        "func main() {\n"
+        "    var p = Point { x: 1, y: 2 };\n"
+        "}\n"
+    );
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_NE(ir.find("chris_gc_push_root"), std::string::npos);
+    EXPECT_NE(ir.find("chris_gc_pop_roots"), std::string::npos);
+}
+
+TEST_F(GCCodegenTest, StringParamEmitsPushRoot) {
+    auto ir = generateIR(
+        "func greet(name: String) -> String {\n"
+        "    return name;\n"
+        "}\n"
+        "func main() {\n"
+        "    var r = greet(\"world\");\n"
+        "}\n"
+    );
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_NE(ir.find("chris_gc_push_root"), std::string::npos);
+}
+
+TEST_F(GCCodegenTest, MethodThisPtrEmitsPushRoot) {
+    auto ir = generateIR(
+        "class Foo {\n"
+        "    public var x: Int;\n"
+        "    public func getX() -> Int {\n"
+        "        return this.x;\n"
+        "    }\n"
+        "}\n"
+        "func main() {\n"
+        "    var f = Foo { x: 5 };\n"
+        "    var v = f.getX();\n"
+        "}\n"
+    );
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_NE(ir.find("chris_gc_push_root"), std::string::npos);
+}
+
+TEST_F(GCCodegenTest, ExplicitReturnPopRoots) {
+    auto ir = generateIR(
+        "func makeStr() -> String {\n"
+        "    var s = \"result\";\n"
+        "    return s;\n"
+        "}\n"
+        "func main() {\n"
+        "    var r = makeStr();\n"
+        "}\n"
+    );
+    ASSERT_FALSE(diag.hasErrors());
+    EXPECT_NE(ir.find("chris_gc_push_root"), std::string::npos);
+    EXPECT_NE(ir.find("chris_gc_pop_roots"), std::string::npos);
+}

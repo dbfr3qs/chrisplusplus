@@ -2222,3 +2222,104 @@ const char* chris_json_stringify(long long handle) {
     free(buf);
     return result;
 }
+
+// ==================== Binary File I/O ====================
+
+long long chris_fopen(const char* path, const char* mode) {
+    FILE* f = fopen(path, mode);
+    return (long long)f;
+}
+
+void chris_fclose(long long handle) {
+    FILE* f = (FILE*)handle;
+    if (f) fclose(f);
+}
+
+long long chris_fread(long long handle, void* buf, long long count) {
+    FILE* f = (FILE*)handle;
+    if (!f || !buf) return 0;
+    return (long long)fread(buf, 1, (size_t)count, f);
+}
+
+long long chris_fwrite(long long handle, void* buf, long long count) {
+    FILE* f = (FILE*)handle;
+    if (!f || !buf) return 0;
+    return (long long)fwrite(buf, 1, (size_t)count, f);
+}
+
+long long chris_fseek(long long handle, long long offset, long long whence) {
+    FILE* f = (FILE*)handle;
+    if (!f) return -1;
+    return (long long)fseek(f, (long)offset, (int)whence);
+}
+
+long long chris_ftell(long long handle) {
+    FILE* f = (FILE*)handle;
+    if (!f) return -1;
+    return (long long)ftell(f);
+}
+
+long long chris_fsize(long long handle) {
+    FILE* f = (FILE*)handle;
+    if (!f) return -1;
+    long cur = ftell(f);
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, cur, SEEK_SET);
+    return (long long)size;
+}
+
+void* chris_alloc(long long size) {
+    return malloc((size_t)size);
+}
+
+void chris_free(void* ptr) {
+    free(ptr);
+}
+
+// ==================== Sized Pointer Load/Store ====================
+
+long long chris_ptr_load_i32(void* ptr) {
+    if (!ptr) return 0;
+    return (long long)(*(int32_t*)ptr);
+}
+
+void chris_ptr_store_i32(void* ptr, long long val) {
+    if (!ptr) return;
+    *(int32_t*)ptr = (int32_t)val;
+}
+
+long long chris_ptr_load_i16(void* ptr) {
+    if (!ptr) return 0;
+    return (long long)(*(int16_t*)ptr);
+}
+
+void chris_ptr_store_i16(void* ptr, long long val) {
+    if (!ptr) return;
+    *(int16_t*)ptr = (int16_t)val;
+}
+
+long long chris_ptr_load_f64(void* ptr) {
+    if (!ptr) return 0;
+    double d = *(double*)ptr;
+    long long result;
+    memcpy(&result, &d, sizeof(double));
+    return result;
+}
+
+void chris_ptr_store_f64(void* ptr, double val) {
+    if (!ptr) return;
+    *(double*)ptr = val;
+}
+
+void chris_memcpy(void* dst, void* src, long long count) {
+    if (dst && src && count > 0) {
+        memcpy(dst, src, (size_t)count);
+    }
+}
+
+void chris_memset(void* dst, long long val, long long count) {
+    if (dst && count > 0) {
+        memset(dst, (int)val, (size_t)count);
+    }
+}

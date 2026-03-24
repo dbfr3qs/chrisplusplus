@@ -23,6 +23,7 @@ struct CLIOptions {
     bool jsonOutput = false;
     bool showHelp = false;
     bool showVersion = false;
+    std::vector<std::string> linkerFlags;
 };
 
 CLIOptions parseArgs(int argc, char* argv[]) {
@@ -43,6 +44,17 @@ CLIOptions parseArgs(int argc, char* argv[]) {
             opts.command = args[i];
         } else if (opts.inputFile.empty()) {
             opts.inputFile = args[i];
+        } else if (args[i].substr(0, 2) == "-l" || args[i].substr(0, 2) == "-L" ||
+                   args[i] == "-lm" || args[i].substr(0, 2) == "-W" ||
+                   args[i] == "-framework") {
+            opts.linkerFlags.push_back(args[i]);
+            // -framework takes a second argument
+            if (args[i] == "-framework" && i + 1 < args.size()) {
+                opts.linkerFlags.push_back(args[++i]);
+            }
+        } else {
+            // Treat any remaining args as linker flags
+            opts.linkerFlags.push_back(args[i]);
         }
     }
 
@@ -52,7 +64,7 @@ CLIOptions parseArgs(int argc, char* argv[]) {
 void printUsage() {
     std::cout << "chrisplusplus compiler v0.1.0\n\n"
               << "Usage:\n"
-              << "  chris build <file.chr>       Compile a .chr file to a native binary\n"
+              << "  chris build <file.chr> [-lLIB ...]  Compile and link a .chr file\n"
               << "  chris run <file.chr>         Build and run a .chr file\n"
               << "  chris test                   Run tests\n"
               << "  chris fmt <file.chr>         Format source code\n"
@@ -129,7 +141,8 @@ bool processImports(Program& program, const std::string& baseDir,
     return true;
 }
 
-int buildCommand(const std::string& inputFile, bool jsonOutput) {
+int buildCommand(const std::string& inputFile, bool jsonOutput,
+                 const std::vector<std::string>& linkerFlags = {}) {
     DiagnosticEngine diagnostics;
 
     if (inputFile.empty()) {
@@ -227,7 +240,7 @@ int buildCommand(const std::string& inputFile, bool jsonOutput) {
     }
 
     // Link
-    if (!codegen.linkExecutable(objectPath, runtimePath, outputPath)) {
+    if (!codegen.linkExecutable(objectPath, runtimePath, outputPath, linkerFlags)) {
         diagnostics.printAll(jsonOutput);
         return 1;
     }
@@ -240,8 +253,9 @@ int buildCommand(const std::string& inputFile, bool jsonOutput) {
     return 0;
 }
 
-int runCommand(const std::string& inputFile, bool jsonOutput) {
-    int buildResult = buildCommand(inputFile, jsonOutput);
+int runCommand(const std::string& inputFile, bool jsonOutput,
+               const std::vector<std::string>& linkerFlags = {}) {
+    int buildResult = buildCommand(inputFile, jsonOutput, linkerFlags);
     if (buildResult != 0) return buildResult;
 
     // Determine the executable path (same as build output)
@@ -621,9 +635,9 @@ int main(int argc, char* argv[]) {
     }
 
     if (opts.command == "build") {
-        return chris::buildCommand(opts.inputFile, opts.jsonOutput);
+        return chris::buildCommand(opts.inputFile, opts.jsonOutput, opts.linkerFlags);
     } else if (opts.command == "run") {
-        return chris::runCommand(opts.inputFile, opts.jsonOutput);
+        return chris::runCommand(opts.inputFile, opts.jsonOutput, opts.linkerFlags);
     } else if (opts.command == "test") {
         return chris::testCommand(opts.inputFile, opts.jsonOutput);
     } else if (opts.command == "fmt") {

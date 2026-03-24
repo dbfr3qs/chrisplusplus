@@ -1,0 +1,42 @@
+// Constants + Struct Layout Example
+
+let SCREEN_WIDTH = 320;
+let SCREEN_HEIGHT = 240;
+
+@CLayout
+class Vec2 {
+    public var x: Int;
+    public var y: Int;
+    public func new(x: Int, y: Int) -> Vec2 {
+        return Vec2 { x: x, y: y };
+    }
+}
+
+@CLayout
+class Color {
+    public var r: Int;
+    public var g: Int;
+    public var b: Int;
+    public var a: Int;
+    public func new(r: Int, g: Int, b: Int, a: Int) -> Color {
+        return Color { r: r, g: g, b: b, a: a };
+    }
+}
+
+func main() {
+    print(SCREEN_WIDTH);
+    print(SCREEN_HEIGHT);
+
+    var pos = Vec2.new(10, 20);
+    print(pos.x);
+    print(pos.y);
+
+    var red = Color.new(255, 0, 0, 255);
+    print(red.r);
+    print(red.a);
+
+    var vecSize = sizeofType("Vec2");
+    var colorSize = sizeofType("Color");
+    print(vecSize);
+    print(colorSize);
+}

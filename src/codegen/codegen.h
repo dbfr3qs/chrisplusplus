@@ -25,7 +25,8 @@ public:
                   const std::vector<GenericInstantiation>& genericInstantiations = {});
     bool emitObjectFile(const std::string& outputPath);
     bool linkExecutable(const std::string& objectPath, const std::string& runtimePath,
-                        const std::string& outputPath);
+                        const std::string& outputPath,
+                        const std::vector<std::string>& extraFlags = {});
     std::string getIR() const;
 
     llvm::Module& module() { return *module_; }
@@ -98,6 +99,10 @@ private:
                                               const std::string& name,
                                               llvm::Type* type);
 
+    // GC shadow stack helpers
+    void emitGcRootPush(llvm::AllocaInst* alloca);
+    void emitGcPopRoots();
+
     std::unique_ptr<llvm::LLVMContext> context_;
     std::unique_ptr<llvm::Module> module_;
     std::unique_ptr<llvm::IRBuilder<>> builder_;
@@ -105,6 +110,10 @@ private:
 
     // Named values in current scope (variable name -> alloca)
     std::unordered_map<std::string, llvm::AllocaInst*> namedValues_;
+
+    // Global variables (variable name -> global)
+    std::unordered_map<std::string, llvm::GlobalVariable*> globalVars_;
+    std::unordered_map<std::string, llvm::Type*> globalVarTypes_;
 
     // Loop context for break/continue
     std::vector<llvm::BasicBlock*> breakTargets_;
@@ -117,6 +126,7 @@ private:
         std::vector<std::string> methodNames;
         std::string parentClass; // empty if no inheritance
         bool isShared = false; // true for shared classes (has mutex field at index 0)
+        bool isCLayout = false; // true for @CLayout classes (C-compatible, no GC)
     };
     std::unordered_map<std::string, ClassInfo> classInfos_;
     llvm::Value* thisPtr_ = nullptr; // current 'this' pointer in method
@@ -326,6 +336,23 @@ private:
     llvm::Function* runtimeJsonArrayLength_ = nullptr;
     llvm::Function* runtimeJsonArrayGet_ = nullptr;
     llvm::Function* runtimeJsonStringify_ = nullptr;
+
+    // Binary file I/O runtime functions
+    llvm::Function* runtimeFopen_ = nullptr;
+    llvm::Function* runtimeFclose_ = nullptr;
+    llvm::Function* runtimeFread_ = nullptr;
+    llvm::Function* runtimeFwrite_ = nullptr;
+    llvm::Function* runtimeFseek_ = nullptr;
+    llvm::Function* runtimeFtell_ = nullptr;
+    llvm::Function* runtimeFsize_ = nullptr;
+    llvm::Function* runtimeAlloc_ = nullptr;
+    llvm::Function* runtimeDealloc_ = nullptr;
+    llvm::Function* runtimePtrLoadI32_ = nullptr;
+    llvm::Function* runtimePtrStoreI32_ = nullptr;
+    llvm::Function* runtimePtrLoadI16_ = nullptr;
+    llvm::Function* runtimePtrStoreI16_ = nullptr;
+    llvm::Function* runtimeMemcpy_ = nullptr;
+    llvm::Function* runtimeMemset_ = nullptr;
 
     // Test framework runtime functions
     llvm::Function* runtimeAssert_ = nullptr;

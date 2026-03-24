@@ -469,22 +469,35 @@ Token Lexer::lexSingleToken() {
             return Token(TokenType::Not, "!", loc);
 
         case '<':
+            if (match('<')) {
+                if (match('=')) return Token(TokenType::ShiftLeftAssign, "<<=", loc);
+                return Token(TokenType::ShiftLeft, "<<", loc);
+            }
             if (match('=')) return Token(TokenType::LessEqual, "<=", loc);
             return Token(TokenType::Less, "<", loc);
 
         case '>':
+            if (match('>')) {
+                if (match('=')) return Token(TokenType::ShiftRightAssign, ">>=", loc);
+                return Token(TokenType::ShiftRight, ">>", loc);
+            }
             if (match('=')) return Token(TokenType::GreaterEqual, ">=", loc);
             return Token(TokenType::Greater, ">", loc);
 
         case '&':
             if (match('&')) return Token(TokenType::And, "&&", loc);
-            diagnostics_.error("E1006", "Unexpected character '&'. Did you mean '&&'?", loc);
-            return Token(TokenType::Error, "&", loc);
+            if (match('=')) return Token(TokenType::AmpersandAssign, "&=", loc);
+            return Token(TokenType::Ampersand, "&", loc);
 
         case '|':
             if (match('|')) return Token(TokenType::Or, "||", loc);
-            diagnostics_.error("E1006", "Unexpected character '|'. Did you mean '||'?", loc);
-            return Token(TokenType::Error, "|", loc);
+            if (match('=')) return Token(TokenType::PipeAssign, "|=", loc);
+            return Token(TokenType::Pipe, "|", loc);
+        case '^':
+            if (match('=')) return Token(TokenType::CaretAssign, "^=", loc);
+            return Token(TokenType::Caret, "^", loc);
+        case '~':
+            return Token(TokenType::Tilde, "~", loc);
 
         case '.':
             if (match('.')) {

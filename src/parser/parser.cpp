@@ -895,15 +895,22 @@ ExprPtr Parser::parseAssignment() {
     // Desugar: x += expr  =>  x = x + expr
     if (check(TokenType::PlusAssign) || check(TokenType::MinusAssign) ||
         check(TokenType::StarAssign) || check(TokenType::SlashAssign) ||
-        check(TokenType::PercentAssign)) {
+        check(TokenType::PercentAssign) || check(TokenType::AmpersandAssign) ||
+        check(TokenType::PipeAssign) || check(TokenType::CaretAssign) ||
+        check(TokenType::ShiftLeftAssign) || check(TokenType::ShiftRightAssign)) {
         SourceLocation loc = current().location;
         std::string op;
         switch (current().type) {
-            case TokenType::PlusAssign:    op = "+"; break;
-            case TokenType::MinusAssign:   op = "-"; break;
-            case TokenType::StarAssign:    op = "*"; break;
-            case TokenType::SlashAssign:   op = "/"; break;
-            case TokenType::PercentAssign: op = "%"; break;
+            case TokenType::PlusAssign:       op = "+"; break;
+            case TokenType::MinusAssign:      op = "-"; break;
+            case TokenType::StarAssign:       op = "*"; break;
+            case TokenType::SlashAssign:      op = "/"; break;
+            case TokenType::PercentAssign:    op = "%"; break;
+            case TokenType::AmpersandAssign:  op = "&"; break;
+            case TokenType::PipeAssign:       op = "|"; break;
+            case TokenType::CaretAssign:      op = "^"; break;
+            case TokenType::ShiftLeftAssign:  op = "<<"; break;
+            case TokenType::ShiftRightAssign: op = ">>"; break;
             default: break;
         }
         advance();
@@ -1016,9 +1023,69 @@ ExprPtr Parser::parseOr() {
 }
 
 ExprPtr Parser::parseAnd() {
-    auto left = parseEquality();
+    auto left = parseBitOr();
 
     while (check(TokenType::And)) {
+        SourceLocation loc = current().location;
+        std::string op = current().value;
+        advance();
+        auto right = parseBitOr();
+
+        auto binary = std::make_unique<BinaryExpr>();
+        binary->location = loc;
+        binary->op = op;
+        binary->left = std::move(left);
+        binary->right = std::move(right);
+        left = std::move(binary);
+    }
+
+    return left;
+}
+
+ExprPtr Parser::parseBitOr() {
+    auto left = parseBitXor();
+
+    while (check(TokenType::Pipe)) {
+        SourceLocation loc = current().location;
+        std::string op = current().value;
+        advance();
+        auto right = parseBitXor();
+
+        auto binary = std::make_unique<BinaryExpr>();
+        binary->location = loc;
+        binary->op = op;
+        binary->left = std::move(left);
+        binary->right = std::move(right);
+        left = std::move(binary);
+    }
+
+    return left;
+}
+
+ExprPtr Parser::parseBitXor() {
+    auto left = parseBitAnd();
+
+    while (check(TokenType::Caret)) {
+        SourceLocation loc = current().location;
+        std::string op = current().value;
+        advance();
+        auto right = parseBitAnd();
+
+        auto binary = std::make_unique<BinaryExpr>();
+        binary->location = loc;
+        binary->op = op;
+        binary->left = std::move(left);
+        binary->right = std::move(right);
+        left = std::move(binary);
+    }
+
+    return left;
+}
+
+ExprPtr Parser::parseBitAnd() {
+    auto left = parseEquality();
+
+    while (check(TokenType::Ampersand)) {
         SourceLocation loc = current().location;
         std::string op = current().value;
         advance();
@@ -1056,10 +1123,30 @@ ExprPtr Parser::parseEquality() {
 }
 
 ExprPtr Parser::parseComparison() {
-    auto left = parseAddition();
+    auto left = parseShift();
 
     while (check(TokenType::Less) || check(TokenType::Greater) ||
            check(TokenType::LessEqual) || check(TokenType::GreaterEqual)) {
+        SourceLocation loc = current().location;
+        std::string op = current().value;
+        advance();
+        auto right = parseShift();
+
+        auto binary = std::make_unique<BinaryExpr>();
+        binary->location = loc;
+        binary->op = op;
+        binary->left = std::move(left);
+        binary->right = std::move(right);
+        left = std::move(binary);
+    }
+
+    return left;
+}
+
+ExprPtr Parser::parseShift() {
+    auto left = parseAddition();
+
+    while (check(TokenType::ShiftLeft) || check(TokenType::ShiftRight)) {
         SourceLocation loc = current().location;
         std::string op = current().value;
         advance();
@@ -1129,7 +1216,7 @@ ExprPtr Parser::parseUnary() {
         return awaitExpr;
     }
 
-    if (check(TokenType::Minus) || check(TokenType::Not)) {
+    if (check(TokenType::Minus) || check(TokenType::Not) || check(TokenType::Tilde)) {
         SourceLocation loc = current().location;
         std::string op = current().value;
         advance();

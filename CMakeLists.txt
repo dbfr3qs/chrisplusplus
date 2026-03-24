@@ -98,6 +98,13 @@ if(BUILD_TESTS)
         tests/annotations/test_annotations.cpp
         tests/stdlib/test_stdlib.cpp
         tests/gc/test_gc.cpp
+        tests/bitwise/test_bitwise.cpp
+        tests/globals/test_globals.cpp
+        tests/pointers/test_pointers.cpp
+        tests/casting/test_casting.cpp
+        tests/binaryio/test_binaryio.cpp
+        tests/typedarrays/test_typedarrays.cpp
+        tests/structs/test_structs.cpp
     )
     target_link_libraries(chris_tests chris_lib chris_runtime GTest::gtest GTest::gtest_main)
     target_include_directories(chris_tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/runtime)

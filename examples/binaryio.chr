@@ -1,0 +1,36 @@
+// Binary File I/O Example
+
+func main() {
+    // Write binary data
+    var buf = alloc(16);
+    unsafe {
+        ptrStoreByte(buf, 72);        // 'H'
+        ptrStoreByte(buf + 1, 101);   // 'e'
+        ptrStoreByte(buf + 2, 108);   // 'l'
+        ptrStoreByte(buf + 3, 108);   // 'l'
+        ptrStoreByte(buf + 4, 111);   // 'o'
+    }
+
+    var f = fopen("/tmp/chris_test.bin", "wb");
+    fwrite(f, buf, 5);
+    fclose(f);
+    print("Wrote 5 bytes");
+
+    // Read it back
+    var rbuf = alloc(16);
+    var rf = fopen("/tmp/chris_test.bin", "rb");
+    var size = fsize(rf);
+    print(size);
+    var n = fread(rf, rbuf, size);
+    fclose(rf);
+    print(n);
+
+    // Check first byte
+    unsafe {
+        var first = ptrLoadByte(rbuf);
+        print(first);  // 72 = 'H'
+    }
+
+    dealloc(buf);
+    dealloc(rbuf);
+}

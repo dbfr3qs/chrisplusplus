@@ -59,8 +59,12 @@ private:
     ExprPtr parseNilCoalesce();
     ExprPtr parseOr();
     ExprPtr parseAnd();
+    ExprPtr parseBitOr();
+    ExprPtr parseBitXor();
+    ExprPtr parseBitAnd();
     ExprPtr parseEquality();
     ExprPtr parseComparison();
+    ExprPtr parseShift();
     ExprPtr parseAddition();
     ExprPtr parseMultiplication();
     ExprPtr parseUnary();

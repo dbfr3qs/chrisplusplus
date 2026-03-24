@@ -371,8 +371,8 @@ TEST_F(LexerTest, MultiLineLocations) {
 // --- Error Recovery ---
 
 TEST_F(LexerTest, InvalidCharacterRecovery) {
-    auto tokens = lexCode("var ~ x");
-    // Should produce tokens for var, error for ~, and identifier x
+    auto tokens = lexCode("var ` x");
+    // Should produce tokens for var, error for `, and identifier x
     bool hasError = false;
     bool hasVar = false;
     bool hasIdent = false;
